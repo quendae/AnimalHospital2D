@@ -97,9 +97,10 @@ describe("procedural clinic layout", () => {
       const stationKinds = layout.stations.map((station) => station.kind);
 
       expect(layout.rooms).toHaveLength(6);
-      expect(roomKinds.filter((kind) => kind === "treatment")).toHaveLength(2);
-      expect(roomKinds).toEqual(expect.arrayContaining(["waiting", "reception", "storage", "analyzer"]));
-      expect(stationKinds.filter((kind) => kind === "treatment")).toHaveLength(2);
+      expect(roomKinds.filter((kind) => kind === "treatment")).toHaveLength(3);
+      expect(roomKinds).toEqual(expect.arrayContaining(["reception", "storage", "analyzer"]));
+      expect(roomKinds).not.toContain("waiting");
+      expect(stationKinds.filter((kind) => kind === "treatment")).toHaveLength(3);
       expect(stationKinds).toEqual(expect.arrayContaining(["reception", "storage", "analyzer"]));
       expect(layout.itemSpawns).toHaveLength(5);
       expect(layout.patientSpawns).toHaveLength(3);
