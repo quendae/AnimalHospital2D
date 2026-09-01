@@ -42,14 +42,53 @@ The current focus is the **local gameplay loop**. Multiplayer infrastructure rem
 - Colyseus server scaffold (currently not the gameplay focus)
 - npm workspaces (`apps/client`, `apps/server`, `packages/shared`)
 
-## Run
+## Quick start
 
-```bash
-npm install
-npm run dev
+After cloning the repository, **you do not need to run `npm install` manually**.
+
+### Windows
+
+Double-click:
+
+```text
+start.bat
 ```
 
-Open the URL printed by Vite.
+Or from a terminal:
+
+```bash
+start.bat
+```
+
+The launcher automatically:
+
+1. checks whether dependencies are already installed and current;
+2. runs `npm install` only on the first launch or after dependency manifests change;
+3. builds the shared package;
+4. starts Vite;
+5. opens the game in your browser.
+
+So the normal workflow is simply:
+
+```bash
+git clone https://github.com/quendae/AnimalHospital2D.git
+cd AnimalHospital2D
+start.bat
+```
+
+### Any platform with Node.js
+
+```bash
+npm start
+```
+
+On Linux/macOS you can also use:
+
+```bash
+sh start.sh
+```
+
+Node.js 22+ is recommended.
 
 To reproduce a particular generated hospital, add a seed to the URL, for example:
 
@@ -129,6 +168,10 @@ apps/
   server/   paused Colyseus multiplayer scaffold
 packages/
   shared/   patient/shift rules, case workflows, procedural layout, furniture generation and route helpers
+scripts/
+  start.mjs smart local bootstrapper
+start.bat   Windows one-click launcher
+start.sh    Linux/macOS launcher
 ```
 
 The procedural generators and workflow rules do not depend on Phaser, so they can be tested independently and later reused by the server if multiplayer work resumes.
