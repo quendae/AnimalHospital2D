@@ -8,7 +8,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@animal-care/shared": "workspace:*",
+    "@animal-care/shared": "file:../../packages/shared",
     "@colyseus/schema": "^3.0.69",
     "@colyseus/ws-transport": "^0.16.5",
     "colyseus": "^0.16.5"
