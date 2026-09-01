@@ -1,23 +1,29 @@
 # Animal Care Co-op
 
-A cooperative 2D veterinary-clinic time-management game prototype built from the project's design document.
+A 2D veterinary-clinic time-management prototype built from the project's design document.
 
-The repository currently contains a **playable local vertical slice** plus the **authoritative Colyseus server foundation** for the online co-op layer. The next networking step is wiring the Phaser client to rooms/lobby state; the README deliberately does not claim that online matchmaking is finished yet.
+The current focus is the **local gameplay loop**. Multiplayer infrastructure remains in the repository, but networking is deliberately paused while the clinic, patients, object handling and moment-to-moment game feel are developed further.
 
-## Current vertical slice
+## Current playable slice
 
-- one readable top-down clinic layout;
-- reception and a three-patient queue;
-- dog, cat and rabbit cases with priorities, patience and clinic stress;
-- escorting patients to the correct treatment station;
-- storage, required tools, pickup/use flow and station cleaning;
-- two minigame models: timing treatment and sample analysis;
-- recoverable mistakes and three treatment-quality levels;
+- **procedurally generated clinic** on every new run;
+- six functional rooms arranged around a central corridor;
+- guaranteed waiting room, reception, storage, diagnostics and two treatment rooms;
+- procedural room order, room widths and door positions;
+- visible walls, doors, counters and room labels;
+- visible dog, cat and rabbit patients physically waiting in the clinic;
+- admitted patients follow the player to their destination and remain visible beside the treatment station;
+- physical world items inspired by Overcooked-style handling;
+- one carried object at a time;
+- items can be picked up, carried above the player, dropped on the floor and picked up again;
+- bandages, sample kits, eye drops, treats and disinfectant are visible objects in the storage room;
+- treatment stations consume the required carried object and restock it after a short delay;
+- dirty treatment stations require physically fetching disinfectant;
+- patient priorities, patience and clinic stress;
+- treatment timing and sample-analysis minigames;
 - coins, score, shift timer and 0–3 star results screen;
-- team-task ping (`Q`);
-- shared renderer-independent gameplay rules with Vitest coverage;
-- Colyseus room scaffold for up to four players, validated movement, host start, ping and reconnect window;
-- relative Vite build paths suitable for an itch.io HTML5 package.
+- deterministic clinic seeds for reproducing a generated map;
+- renderer-independent domain rules and procedural-layout tests.
 
 ## Stack
 
@@ -25,10 +31,10 @@ The repository currently contains a **playable local vertical slice** plus the *
 - TypeScript
 - Vite
 - Vitest
-- Colyseus 0.18 / `@colyseus/schema` 5
+- Colyseus server scaffold (currently not the gameplay focus)
 - npm workspaces (`apps/client`, `apps/server`, `packages/shared`)
 
-## Run the local game
+## Run
 
 ```bash
 npm install
@@ -37,44 +43,62 @@ npm run dev
 
 Open the URL printed by Vite.
 
-## Run the multiplayer server scaffold
+To reproduce a particular generated hospital, add a seed to the URL, for example:
 
-In a second terminal:
-
-```bash
-npm run dev:server
+```text
+?seed=12345
 ```
-
-The server listens on port `2567` by default. The current Phaser vertical slice still runs locally; client room joining/lobby UI is the next networking milestone.
 
 ## Controls
 
 - **WASD / Arrow keys** — move
-- **E / Space** — interact, admit, pick up, deliver or start a procedure
-- **1–3** — choose a tube during sample analysis
-- **Q** — ping the current priority task
-- **R** — replay after the results screen
+- **E / Space** — interact / pick up / drop / deliver / start treatment
+- **1–4** — choose a filter during sample analysis
+- **Q** — show the current priority task
+- **R** — after results, generate a fresh clinic and start again
 
-## Prototype flow
+## Gameplay flow
 
-1. Start the shift and go to reception.
-2. Admit the first patient and escort them to the correct station.
-3. Fetch the requested tool from storage.
-4. Deliver it to the station and complete the treatment minigame.
-5. Fetch disinfectant after treatment and clean the dirty station.
-6. Keep the queue moving until the shift ends.
+1. Start the shift. Three patients appear physically in the waiting room.
+2. Go to reception and admit the first patient.
+3. The patient follows you through the clinic.
+4. Bring the patient to the required treatment room or analyzer.
+5. Walk to storage and physically pick up the requested item.
+6. Carry it through the hospital and deliver it to the occupied station.
+7. Complete the treatment minigame.
+8. The recovered patient walks toward the exit.
+9. Fetch disinfectant and clean the dirty station.
+10. Keep the queue moving until the shift ends.
+
+## Procedural clinic generation
+
+The generator lives in `packages/shared/src/layout.ts` and is deterministic by seed. Each generated clinic keeps a safe gameplay contract instead of being unconstrained random noise:
+
+- exactly six rooms;
+- one central circulation corridor;
+- one waiting room;
+- one reception room;
+- one storage room;
+- one diagnostic room;
+- two treatment rooms;
+- every room has a door into the main corridor;
+- treatment stations and item spawn points are generated from the room layout;
+- the player always starts near reception;
+- the queue always has three valid waiting positions.
+
+This keeps the navigation changing without producing unwinnable layouts.
 
 ## Architecture
 
 ```text
 apps/
-  client/   Phaser rendering, input and treatment UI
-  server/   Colyseus room/state and authoritative network validation
+  client/   Phaser world, procedural-room rendering, patients, items and minigames
+  server/   paused Colyseus multiplayer scaffold
 packages/
-  shared/   patient, station, shift and scoring rules + configuration + tests
+  shared/   patient/shift rules, scoring, config and procedural clinic generator
 ```
 
-The shared domain layer has no Phaser dependency. That keeps patient flow, scoring and validation testable without rendering and gives the server a stable rule layer to take ownership of as multiplayer is connected.
+The procedural map generator and gameplay rules do not depend on Phaser, so they can be tested independently and later reused by the server if multiplayer work resumes.
 
 ## Quality checks
 
@@ -83,8 +107,8 @@ npm test
 npm run build
 ```
 
-GitHub Actions runs the same domain tests and full shared/client/server build on pushes and pull requests to `main`.
+GitHub Actions runs domain/layout tests and the full shared/client/server build on pushes and pull requests to `main`.
 
-## Scope / next milestone
+## Current direction
 
-This first pass intentionally proves the clinic workflow before scaling content. The next smallest useful milestone is **real two-player client connectivity**: room create/join, remote-player rendering, server-owned movement/interactions and reconnect handoff. After that, add the shop and additional cases rather than expanding the campaign first.
+Networking is intentionally on hold. The next iterations should continue pushing the local game toward the readable physical-task feel of a co-op kitchen game: better patient movement, stronger object silhouettes, more station types, counters/shelves for placing objects, environmental events, room decorations and more treatment chains before returning to multiplayer.
