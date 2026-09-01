@@ -83,6 +83,17 @@ function seatWaitingPatients(scene: any): void {
   }
 }
 
+function moveAdmittedPatientOffSeat(scene: any, runtime: any): void {
+  if (!runtime?.waitingForDestination) return;
+  const reception = scene.layout.rooms.find((room: any) => room.kind === "reception");
+  if (!reception) return;
+  const holdingPoint = {
+    x: reception.doorX,
+    y: scene.layout.corridor.y + scene.layout.corridor.height / 2,
+  };
+  scene.movePatient(runtime, holdingPoint, "handoff");
+}
+
 function spawnSpill(scene: any): void {
   const spills = scene.__maintenanceSpills as SpillRuntime[];
   if (!spills || spills.length >= 2) return;
@@ -157,9 +168,7 @@ function updateMaintenance(scene: any, delta: number): void {
 
   const hazard = nearestSpill(scene, 48);
   const body = scene.player?.body as Phaser.Physics.Arcade.Body | undefined;
-  if (hazard && body) {
-    body.velocity.scale(0.68);
-  }
+  if (hazard && body) body.velocity.scale(0.68);
 }
 
 function updateMaintenanceHighlight(scene: any): void {
@@ -209,7 +218,10 @@ export function installClinicSceneV2IterationC(): void {
     const patientId = this.waitingQueue.find((id: string) => this.patients.get(id)?.phase === "waiting");
     const runtime = patientId ? this.patients.get(patientId) : undefined;
     const result = originalAdmit.call(this);
-    if (result && runtime) runtime.seatIndex = undefined;
+    if (result && runtime) {
+      runtime.seatIndex = undefined;
+      moveAdmittedPatientOffSeat(this, runtime);
+    }
     return result;
   };
 
