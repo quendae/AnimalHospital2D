@@ -4,7 +4,6 @@ import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const root = resolve(import.meta.dirname, "..");
-const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const manifests = [
   "package.json",
   "apps/client/package.json",
@@ -20,12 +19,19 @@ function dependencyFingerprint() {
   return hash.digest("hex");
 }
 
-function run(command, args) {
-  const result = spawnSync(command, args, {
+function runNpm(args) {
+  const isWindows = process.platform === "win32";
+  const command = isWindows ? (process.env.ComSpec || "cmd.exe") : "npm";
+  const commandArgs = isWindows
+    ? ["/d", "/s", "/c", "npm", ...args]
+    : args;
+
+  const result = spawnSync(command, commandArgs, {
     cwd: root,
     stdio: "inherit",
     shell: false,
   });
+
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
@@ -38,7 +44,7 @@ console.log("\nAnimal Care Co-op — local launcher\n");
 
 if (needsInstall) {
   console.log("[setup] Pierwszy start albo zmiana zależności — uruchamiam npm install...");
-  run(npm, ["install"]);
+  runNpm(["install"]);
   mkdirSync(dirname(stampPath), { recursive: true });
   writeFileSync(stampPath, fingerprint, "utf8");
   console.log("[setup] Gotowe. Kolejne uruchomienia pominą instalację.\n");
@@ -47,4 +53,4 @@ if (needsInstall) {
 }
 
 console.log("[game] Uruchamiam klienta i otwieram przeglądarkę...\n");
-run(npm, ["run", "dev", "--", "--open"]);
+runNpm(["run", "dev", "--", "--open"]);
