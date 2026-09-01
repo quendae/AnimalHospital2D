@@ -1,7 +1,6 @@
 import Phaser from "phaser";
 import {
   ITEM_LABELS,
-  MVP_STATIONS,
   PATIENT_DEFINITIONS,
   PROCEDURE_LABELS,
   admitPatient,
@@ -13,10 +12,13 @@ import {
   createShiftState,
   deliverRequiredItem,
   enqueuePatient,
+  generateClinicLayout,
   registerMistake,
   scoreTotal,
   starRating,
   tickShift,
+  type ClinicLayout,
+  type ClinicRoomKind,
   type ItemType,
   type PatientCase,
   type ProcedureType,
@@ -25,13 +27,28 @@ import {
   type TreatmentQuality,
 } from "@animal-care/shared";
 
+type WorldItem = {
+  id: string;
+  type: ItemType;
+  homeX: number;
+  homeY: number;
+  container: Phaser.GameObjects.Container;
+  carried: boolean;
+};
+
+type PatientView = {
+  container: Phaser.GameObjects.Container;
+  status: Phaser.GameObjects.Text;
+  name: Phaser.GameObjects.Text;
+};
+
 type TimingMinigame = {
   kind: "timing";
   patientId: string;
   procedure: ProcedureType;
   container: Phaser.GameObjects.Container;
   marker: Phaser.GameObjects.Rectangle;
-  progressText: Phaser.GameObjects.Text;
+  progress: Phaser.GameObjects.Text;
   attempts: number;
   accuracySum: number;
   startedAt: number;
@@ -42,12 +59,12 @@ type SampleMinigame = {
   patientId: string;
   procedure: ProcedureType;
   container: Phaser.GameObjects.Container;
-  promptText: Phaser.GameObjects.Text;
-  progressText: Phaser.GameObjects.Text;
+  prompt: Phaser.GameObjects.Text;
+  progress: Phaser.GameObjects.Text;
   sequence: number[];
   index: number;
-  attempts: number;
   correct: number;
+  attempts: number;
   startedAt: number;
 };
 
@@ -55,47 +72,93 @@ type ActiveMinigame = TimingMinigame | SampleMinigame;
 
 const WIDTH = 1280;
 const HEIGHT = 720;
-const HUD_H = 62;
-const LEFT_PANEL_W = 244;
-const MOVE_SPEED = 245;
-const INTERACT_DISTANCE = 100;
+const HUD_H = 64;
+const MOVE_SPEED = 250;
+const INTERACT_DISTANCE = 105;
+const ITEM_DISTANCE = 72;
+
+const ROOM_COLORS: Record<ClinicRoomKind, number> = {
+  waiting: 0xe4f2df,
+  reception: 0xe8eee8,
+  storage: 0xf3e7c8,
+  analyzer: 0xddebf3,
+  treatment: 0xf4dedb,
+};
+
+const ITEM_COLORS: Record<ItemType, number> = {
+  bandage: 0xf4f1df,
+  sampleKit: 0xb9d8e8,
+  eyeDrops: 0xd8e4ff,
+  treat: 0xe4b06d,
+  disinfectant: 0x9fd5ca,
+};
+
+const ITEM_ICONS: Record<ItemType, string> = {
+  bandage: "BD",
+  sampleKit: "PR",
+  eyeDrops: "KR",
+  treat: "♥",
+  disinfectant: "DS",
+};
 
 export class ClinicScene extends Phaser.Scene {
-  private state: ShiftState = createShiftState(MVP_STATIONS);
+  private seed = 1;
+  private layout!: ClinicLayout;
+  private state!: ShiftState;
+
   private player!: Phaser.Physics.Arcade.Sprite;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<"up" | "down" | "left" | "right", Phaser.Input.Keyboard.Key>;
   private interactKey!: Phaser.Input.Keyboard.Key;
+  private spaceKey!: Phaser.Input.Keyboard.Key;
   private pingKey!: Phaser.Input.Keyboard.Key;
   private restartKey!: Phaser.Input.Keyboard.Key;
   private numberKeys!: Phaser.Input.Keyboard.Key[];
 
+  private wallGroup!: Phaser.Physics.Arcade.StaticGroup;
+  private stationGroup!: Phaser.Physics.Arcade.StaticGroup;
+  private stationStatusLayer!: Phaser.GameObjects.Container;
+  private patientViews = new Map<string, PatientView>();
+  private departingPatients = new Set<string>();
+  private worldItems: WorldItem[] = [];
+  private carriedItem?: WorldItem;
+  private escortedPatientId?: string;
+  private activeMinigame?: ActiveMinigame;
+
   private hudText!: Phaser.GameObjects.Text;
+  private itemText!: Phaser.GameObjects.Text;
   private hintText!: Phaser.GameObjects.Text;
   private toastText!: Phaser.GameObjects.Text;
-  private queueLayer!: Phaser.GameObjects.Container;
-  private stationStatusLayer!: Phaser.GameObjects.Container;
-  private escortBadge!: Phaser.GameObjects.Container;
-  private escortBadgeText!: Phaser.GameObjects.Text;
-
-  private escortedPatientId?: string;
-  private carriedItem?: ItemType;
-  private activeMinigame?: ActiveMinigame;
   private briefingLayer?: Phaser.GameObjects.Container;
   private resultsLayer?: Phaser.GameObjects.Container;
   private nextSpawnAtMs = 18_000;
   private lastUiRefresh = 0;
-  private lastToastAt = 0;
   private resultsShown = false;
+  private facing = new Phaser.Math.Vector2(0, 1);
 
   constructor() {
     super("ClinicScene");
   }
 
   create(): void {
+    const requestedSeed = Number(new URLSearchParams(window.location.search).get("seed"));
+    this.seed = Number.isFinite(requestedSeed) && requestedSeed > 0
+      ? Math.floor(requestedSeed)
+      : Math.floor((Date.now() + Math.random() * 1_000_000) % 9_999_999) + 1;
+    this.layout = generateClinicLayout(this.seed, WIDTH, HEIGHT);
+    this.state = createShiftState(this.layout.stations);
+    this.nextSpawnAtMs = 18_000;
+    this.resultsShown = false;
+    this.patientViews.clear();
+    this.departingPatients.clear();
+    this.worldItems = [];
+    this.carriedItem = undefined;
+    this.escortedPatientId = undefined;
+
     this.createInput();
     this.createPlayerTexture();
     this.drawClinic();
+    this.createWorldItems();
     this.createPlayer();
     this.createHud();
     this.showBriefing();
@@ -104,29 +167,40 @@ export class ClinicScene extends Phaser.Scene {
 
   update(time: number, delta: number): void {
     if (this.activeMinigame) {
+      this.stopPlayer();
       this.updateMinigame(time);
+      this.updateCarriedItem();
       return;
     }
 
     if (this.state.phase === "briefing") {
       this.stopPlayer();
-      if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
-        this.startShift();
-      }
+      if (this.interactionPressed()) this.startShift();
       return;
     }
 
     if (this.state.phase === "results") {
       this.stopPlayer();
+      this.updateCarriedItem();
       if (!this.resultsShown) this.showResults();
       if (Phaser.Input.Keyboard.JustDown(this.restartKey)) this.scene.restart();
       return;
     }
 
     this.movePlayer();
-    this.updateEscortBadge();
+    this.updateCarriedItem();
+    this.updatePatientViews();
 
+    const previousIds = new Set([...this.state.queue, ...this.state.activePatients].map((patient) => patient.id));
     this.state = tickShift(this.state, delta);
+    const currentIds = new Set([...this.state.queue, ...this.state.activePatients].map((patient) => patient.id));
+    for (const id of previousIds) {
+      if (!currentIds.has(id) && !this.state.completedPatients.some((patient) => patient.id === id)) {
+        this.sendPatientOut(id, false);
+        if (this.escortedPatientId === id) this.escortedPatientId = undefined;
+      }
+    }
+
     if (this.state.phase === "results") {
       this.refreshUi(true);
       return;
@@ -137,10 +211,10 @@ export class ClinicScene extends Phaser.Scene {
       this.nextSpawnAtMs += 18_000;
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.interactKey)) this.handleInteraction();
+    if (this.interactionPressed()) this.handleInteraction();
     if (Phaser.Input.Keyboard.JustDown(this.pingKey)) this.pingPriorityTask();
 
-    if (time - this.lastUiRefresh > 120) {
+    if (time - this.lastUiRefresh > 100) {
       this.refreshUi();
       this.lastUiRefresh = time;
     }
@@ -156,25 +230,21 @@ export class ClinicScene extends Phaser.Scene {
       right: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     };
     this.interactKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
-    keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE).on("down", () => {
-      if (!this.activeMinigame && this.state.phase === "active") this.handleInteraction();
-    });
+    this.spaceKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.pingKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
     this.restartKey = keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
-    this.numberKeys = [
-      keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
-      keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
-      keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE),
-      keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FOUR),
-      keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FIVE),
-    ];
+    this.numberKeys = [1, 2, 3, 4].map((value) => keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE + value - 1));
+  }
+
+  private interactionPressed(): boolean {
+    return Phaser.Input.Keyboard.JustDown(this.interactKey) || Phaser.Input.Keyboard.JustDown(this.spaceKey);
   }
 
   private createPlayerTexture(): void {
     if (this.textures.exists("intern")) return;
     const graphics = this.make.graphics({ x: 0, y: 0 }, false);
-    graphics.fillStyle(0x3c8f91, 1);
-    graphics.fillCircle(24, 24, 22);
+    graphics.fillStyle(0x2f8588, 1);
+    graphics.fillCircle(24, 24, 21);
     graphics.lineStyle(4, 0x235d62, 1);
     graphics.strokeCircle(24, 24, 20);
     graphics.fillStyle(0xffffff, 1);
@@ -185,141 +255,174 @@ export class ClinicScene extends Phaser.Scene {
   }
 
   private drawClinic(): void {
-    const g = this.add.graphics();
-    g.fillStyle(0xf4eee2, 1);
-    g.fillRect(0, 0, WIDTH, HEIGHT);
+    this.wallGroup = this.physics.add.staticGroup();
+    this.stationGroup = this.physics.add.staticGroup();
+    this.stationStatusLayer = this.add.container(0, 0).setDepth(18);
 
-    g.fillStyle(0x284b50, 1);
-    g.fillRect(0, 0, WIDTH, HUD_H);
+    const background = this.add.graphics().setDepth(0);
+    background.fillStyle(0xd9d1c3, 1);
+    background.fillRect(0, 0, WIDTH, HEIGHT);
+    background.fillStyle(0x294c50, 1);
+    background.fillRect(0, 0, WIDTH, HUD_H);
 
-    g.fillStyle(0xe8dfce, 1);
-    g.fillRoundedRect(14, 76, LEFT_PANEL_W - 28, 624, 18);
-    g.lineStyle(3, 0xcbbfae, 1);
-    g.strokeRoundedRect(14, 76, LEFT_PANEL_W - 28, 624, 18);
+    background.fillStyle(0xd6cdbf, 1);
+    background.fillRect(
+      this.layout.corridor.x,
+      this.layout.corridor.y,
+      this.layout.corridor.width,
+      this.layout.corridor.height,
+    );
 
-    g.fillStyle(0xf9f4e9, 1);
-    g.fillRoundedRect(258, 76, 1008, 624, 20);
-    g.lineStyle(4, 0xc8bca9, 1);
-    g.strokeRoundedRect(258, 76, 1008, 624, 20);
+    for (const room of this.layout.rooms) {
+      background.fillStyle(ROOM_COLORS[room.kind], 1);
+      background.fillRect(room.x, room.y, room.width, room.height);
 
-    this.drawRoom(g, 278, 94, 256, 176, 0xdcefdc, "POCZEKALNIA", "kolejka i uspokajanie");
-    this.drawRoom(g, 548, 94, 250, 176, 0xe2ecf3, "DIAGNOSTYKA", "analizator + magazyn");
-    this.drawRoom(g, 812, 94, 430, 242, 0xf4dfdc, "LECZENIE A", "procedury i narzędzia");
-    this.drawRoom(g, 812, 350, 430, 326, 0xf1e4d4, "LECZENIE B", "procedury + czyszczenie");
-    this.drawRoom(g, 278, 284, 506, 392, 0xe5eee8, "HUB KLINIKI", "recepcja i główny przepływ");
-
-    g.fillStyle(0xb7d6ca, 1);
-    g.fillRoundedRect(336, 438, 300, 88, 18);
-    g.lineStyle(3, 0x6f9f91, 1);
-    g.strokeRoundedRect(336, 438, 300, 88, 18);
-
-    for (let i = 0; i < 10; i++) {
-      const x = 330 + (i % 5) * 82;
-      const y = 572 + Math.floor(i / 5) * 44;
-      g.fillStyle(0xcfe0d9, 0.7);
-      g.fillCircle(x, y, 5);
-      g.fillCircle(x + 9, y - 6, 3);
-      g.fillCircle(x - 9, y - 6, 3);
-    }
-
-    this.add.text(30, 92, "PACJENCI", this.textStyle(18, "#284b50", 900));
-    this.add.text(30, 119, "kolejka przyjęć", this.textStyle(13, "#6d7b77", 700));
-    this.add.text(278, 653, "E / Space — interakcja     Q — ping zadania", this.textStyle(13, "#667a74", 800));
-
-    const obstacleGroup = this.physics.add.staticGroup();
-    for (const station of this.state.stations) {
-      const color = this.stationBaseColor(station.kind);
-      const stationRect = this.add.rectangle(station.x, station.y, station.width, station.height, color, 1)
-        .setStrokeStyle(3, 0x6d776f, 0.45)
-        .setDepth(3);
-      this.add.text(station.x, station.y - 8, station.label, this.textStyle(14, "#2e4548", 900))
-        .setOrigin(0.5)
-        .setDepth(4);
-      this.add.text(station.x, station.y + 15, this.stationSubtitle(station), this.textStyle(11, "#61716f", 700))
-        .setOrigin(0.5)
-        .setDepth(4);
-
-      if (station.kind !== "exit") {
-        this.physics.add.existing(stationRect, true);
-        obstacleGroup.add(stationRect);
+      const tile = room.kind === "treatment" || room.kind === "analyzer" ? 0xffffff : 0x6c8b80;
+      for (let x = room.x + 28; x < room.x + room.width; x += 46) {
+        for (let y = room.y + 28; y < room.y + room.height; y += 46) {
+          background.fillStyle(tile, room.kind === "treatment" || room.kind === "analyzer" ? 0.12 : 0.055);
+          background.fillCircle(x, y, 2.5);
+        }
       }
+
+      this.add.text(room.x + 20, room.y + 18, room.label, this.textStyle(14, "#385557", 900)).setDepth(4);
+      this.add.text(
+        room.x + 20,
+        room.y + 40,
+        this.roomSubtitle(room.kind),
+        this.textStyle(10, "#71807b", 700),
+      ).setDepth(4);
+
+      const door = this.add.rectangle(room.doorX, room.doorY, 72, 9, 0xf7f1e6, 1).setDepth(5);
+      door.setStrokeStyle(2, 0x9a8f81, 0.7);
     }
 
-    this.stationStatusLayer = this.add.container(0, 0).setDepth(7);
+    for (const segment of this.layout.walls) {
+      const wall = this.add.rectangle(segment.x, segment.y, segment.width, segment.height, 0x5f6b68, 1).setDepth(8);
+      wall.setStrokeStyle(2, 0x44504e, 1);
+      this.physics.add.existing(wall, true);
+      this.wallGroup.add(wall);
+    }
+
+    const rightBlock = this.add.rectangle(
+      WIDTH - 12,
+      this.layout.corridor.y + this.layout.corridor.height / 2,
+      24,
+      this.layout.corridor.height,
+      0x5f6b68,
+      1,
+    ).setDepth(8);
+    this.physics.add.existing(rightBlock, true);
+    this.wallGroup.add(rightBlock);
+
+    this.drawExit();
+
+    for (const station of this.state.stations) {
+      const shadow = this.add.rectangle(station.x + 5, station.y + 7, station.width, station.height, 0x394744, 0.18).setDepth(9);
+      const counter = this.add.rectangle(
+        station.x,
+        station.y,
+        station.width,
+        station.height,
+        this.stationBaseColor(station.kind),
+        1,
+      ).setDepth(10);
+      counter.setStrokeStyle(3, 0x5d706b, 0.75);
+      this.add.text(station.x, station.y - 8, station.label, this.textStyle(12, "#2e4548", 900))
+        .setOrigin(0.5)
+        .setDepth(11);
+      this.add.text(station.x, station.y + 13, this.stationSubtitle(station), this.textStyle(9, "#647673", 700))
+        .setOrigin(0.5)
+        .setDepth(11);
+      shadow.setVisible(true);
+      this.physics.add.existing(counter, true);
+      this.stationGroup.add(counter);
+    }
   }
 
-  private drawRoom(
-    g: Phaser.GameObjects.Graphics,
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    color: number,
-    title: string,
-    subtitle: string,
-  ): void {
-    g.fillStyle(color, 0.72);
-    g.fillRoundedRect(x, y, w, h, 18);
-    g.lineStyle(2, 0xffffff, 0.8);
-    g.strokeRoundedRect(x, y, w, h, 18);
-    this.add.text(x + 18, y + 14, title, this.textStyle(13, "#415b5d", 900));
-    this.add.text(x + 18, y + 34, subtitle, this.textStyle(11, "#6b7c79", 700));
+  private drawExit(): void {
+    const x = this.layout.exit.x;
+    const y = this.layout.exit.y;
+    this.add.rectangle(x, y, 34, this.layout.corridor.height - 18, 0x7eb69d, 0.75).setDepth(2);
+    this.add.text(x + 13, y, "WYJŚCIE", this.textStyle(10, "#ffffff", 900))
+      .setOrigin(0.5)
+      .setAngle(-90)
+      .setDepth(3);
+  }
+
+  private createWorldItems(): void {
+    for (const spawn of this.layout.itemSpawns) {
+      this.worldItems.push(this.makeWorldItem(spawn.id, spawn.item, spawn.x, spawn.y));
+    }
+  }
+
+  private makeWorldItem(id: string, type: ItemType, x: number, y: number): WorldItem {
+    const shadow = this.add.ellipse(4, 10, 34, 18, 0x172b2c, 0.16);
+    const body = this.add.rectangle(0, 0, 38, 34, ITEM_COLORS[type], 1).setStrokeStyle(3, 0x536b67, 0.75);
+    const icon = this.add.text(0, -2, ITEM_ICONS[type], this.textStyle(type === "treat" ? 16 : 11, "#334b4d", 900)).setOrigin(0.5);
+    const label = this.add.text(0, 26, ITEM_LABELS[type], this.textStyle(9, "#3f595a", 800))
+      .setOrigin(0.5)
+      .setBackgroundColor("#fffaf0")
+      .setPadding(5, 2, 5, 2);
+    const container = this.add.container(x, y, [shadow, body, icon, label]).setDepth(14);
+    return { id, type, homeX: x, homeY: y, container, carried: false };
   }
 
   private createPlayer(): void {
-    this.player = this.physics.add.sprite(470, 560, "intern").setDepth(20);
-    this.player.setCircle(21, 3, 3);
+    this.player = this.physics.add.sprite(this.layout.playerSpawn.x, this.layout.playerSpawn.y, "intern").setDepth(30);
+    this.player.setCircle(20, 4, 4);
     this.player.setCollideWorldBounds(true);
-    this.player.body.setBoundsRectangle(new Phaser.Geom.Rectangle(260, HUD_H + 20, 1000, 630));
+    this.physics.add.collider(this.player, this.wallGroup);
+    this.physics.add.collider(this.player, this.stationGroup);
 
-    const playerLabel = this.add.text(0, 0, "STAŻYSTA", this.textStyle(11, "#ffffff", 900))
-      .setBackgroundColor("#284b50")
-      .setPadding(7, 3, 7, 3)
-      .setOrigin(0.5);
-    playerLabel.setPosition(this.player.x, this.player.y + 39).setDepth(21);
-
-    this.events.on("update", () => {
-      playerLabel.setPosition(this.player.x, this.player.y + 39);
-    });
-
-    const badgeBg = this.add.circle(0, 0, 20, 0xffffff, 0.95).setStrokeStyle(3, 0x284b50);
-    this.escortBadgeText = this.add.text(0, 0, "", this.textStyle(17, "#284b50", 900)).setOrigin(0.5);
-    this.escortBadge = this.add.container(-100, -100, [badgeBg, this.escortBadgeText]).setDepth(25).setVisible(false);
+    const label = this.add.text(0, 0, "STAŻYSTA", this.textStyle(10, "#ffffff", 900))
+      .setOrigin(0.5)
+      .setBackgroundColor("#294c50")
+      .setPadding(6, 2, 6, 2)
+      .setDepth(31);
+    this.events.on("update", () => label.setPosition(this.player.x, this.player.y + 35));
   }
 
   private createHud(): void {
-    this.hudText = this.add.text(20, 17, "", this.textStyle(18, "#ffffff", 900)).setDepth(50);
-    this.hintText = this.add.text(WIDTH / 2, HEIGHT - 24, "", this.textStyle(14, "#ffffff", 900))
+    this.hudText = this.add.text(18, 17, "", this.textStyle(17, "#ffffff", 900)).setDepth(100);
+    this.itemText = this.add.text(WIDTH - 18, 17, "", this.textStyle(14, "#ffffff", 900))
+      .setOrigin(1, 0)
+      .setDepth(100);
+    this.hintText = this.add.text(WIDTH / 2, HEIGHT - 18, "", this.textStyle(13, "#ffffff", 900))
       .setOrigin(0.5)
-      .setBackgroundColor("#284b50")
-      .setPadding(14, 7, 14, 7)
-      .setDepth(60);
-    this.toastText = this.add.text(WIDTH / 2, 84, "", this.textStyle(15, "#ffffff", 900))
+      .setBackgroundColor("#294c50")
+      .setPadding(12, 6, 12, 6)
+      .setDepth(100);
+    this.toastText = this.add.text(WIDTH / 2, 84, "", this.textStyle(14, "#ffffff", 900))
       .setOrigin(0.5)
       .setBackgroundColor("#3c8f91")
-      .setPadding(14, 8, 14, 8)
+      .setPadding(13, 7, 13, 7)
       .setAlpha(0)
-      .setDepth(80);
-    this.queueLayer = this.add.container(0, 0).setDepth(40);
+      .setDepth(150);
   }
 
   private showBriefing(): void {
-    const shade = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x173236, 0.72);
-    const panel = this.add.rectangle(WIDTH / 2, HEIGHT / 2, 670, 390, 0xfffbf3, 1)
-      .setStrokeStyle(5, 0x8cb5a5, 1);
-    const title = this.add.text(WIDTH / 2, 222, "PIERWSZA ZMIANA", this.textStyle(34, "#284b50", 900)).setOrigin(0.5);
-    const subtitle = this.add.text(WIDTH / 2, 265, "Mała klinika • spokojny poranek", this.textStyle(17, "#66817a", 800)).setOrigin(0.5);
+    const shade = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x173236, 0.75);
+    const panel = this.add.rectangle(WIDTH / 2, HEIGHT / 2, 760, 420, 0xfffbf3, 1).setStrokeStyle(5, 0x8cb5a5, 1);
+    const title = this.add.text(WIDTH / 2, 205, "NOWA ZMIANA • PROCEDURALNA KLINIKA", this.textStyle(28, "#284b50", 900)).setOrigin(0.5);
+    const seed = this.add.text(WIDTH / 2, 242, `SEED ${this.seed}`, this.textStyle(13, "#788981", 800)).setOrigin(0.5);
     const body = this.add.text(
       WIDTH / 2,
-      365,
-      "1. Przyjmij pacjenta przy recepcji\n2. Zaprowadź go do właściwej stacji\n3. Pobierz narzędzie z magazynu\n4. Wykonaj krótką procedurę\n5. Wyczyść stanowisko przed następnym pacjentem",
-      { ...this.textStyle(18, "#334f50", 800), align: "left", lineSpacing: 11 },
+      360,
+      "Pacjenci czekają fizycznie w poczekalni.\nPrzyjmij ich przy recepcji i zaprowadź do właściwego gabinetu.\nNarzędzia leżą w magazynie — podnosisz jeden przedmiot, niesiesz go i możesz odłożyć.\nPo zabiegu brudny stół wymaga środka do dezynfekcji.",
+      { ...this.textStyle(17, "#405b5b", 750), align: "center", lineSpacing: 10 },
     ).setOrigin(0.5);
-    const start = this.add.text(WIDTH / 2, 530, "NACIŚNIJ  E  ABY OTWORZYĆ KLINIKĘ", this.textStyle(16, "#ffffff", 900))
+    const controls = this.add.text(
+      WIDTH / 2,
+      488,
+      "WASD / STRZAŁKI — ruch     E / SPACE — interakcja     Q — podpowiedź",
+      this.textStyle(13, "#5f7470", 850),
+    ).setOrigin(0.5);
+    const start = this.add.text(WIDTH / 2, 545, "NACIŚNIJ E, ABY OTWORZYĆ KLINIKĘ", this.textStyle(15, "#ffffff", 900))
       .setOrigin(0.5)
       .setBackgroundColor("#3c8f91")
-      .setPadding(20, 11, 20, 11);
-    this.briefingLayer = this.add.container(0, 0, [shade, panel, title, subtitle, body, start]).setDepth(200);
+      .setPadding(18, 10, 18, 10);
+    this.briefingLayer = this.add.container(0, 0, [shade, panel, title, seed, body, controls, start]).setDepth(300);
   }
 
   private startShift(): void {
@@ -329,20 +432,111 @@ export class ClinicScene extends Phaser.Scene {
     this.spawnPatient();
     this.spawnPatient();
     this.spawnPatient();
-    this.toast("Klinika otwarta — zacznij od recepcji!");
+    this.toast("Klinika otwarta — pacjenci już czekają!");
     this.refreshUi(true);
   }
 
   private spawnPatient(): void {
-    if (this.state.queue.length >= 3) return;
+    if (this.state.queue.length >= 3 || this.state.phase !== "active") return;
     const sequence = this.state.patientSequence + 1;
     const definition = PATIENT_DEFINITIONS[(sequence - 1) % PATIENT_DEFINITIONS.length];
-    this.state = enqueuePatient(this.state, createPatient(definition, sequence));
-    this.refreshUi(true);
+    const patient = createPatient(definition, sequence);
+    this.state = enqueuePatient(this.state, patient);
+    this.ensurePatientView(patient);
+    this.repositionQueuePatients();
+  }
+
+  private ensurePatientView(patient: PatientCase): PatientView {
+    const existing = this.patientViews.get(patient.id);
+    if (existing) return existing;
+
+    const body = this.add.circle(0, 0, 24, patient.color, 1).setStrokeStyle(3, 0x51615e, 0.8);
+    const face = this.add.circle(7, 2, 4, 0xffffff, 0.95);
+    const pupil = this.add.circle(8, 2, 1.8, 0x263f40, 1);
+    const nose = this.add.circle(17, 9, 3, 0x4c5552, 1);
+    const speciesBits: Phaser.GameObjects.GameObject[] = [];
+
+    if (patient.species === "rabbit") {
+      speciesBits.push(this.add.ellipse(-10, -26, 12, 30, patient.color, 1).setStrokeStyle(2, 0x51615e, 0.65));
+      speciesBits.push(this.add.ellipse(8, -28, 12, 32, patient.color, 1).setStrokeStyle(2, 0x51615e, 0.65));
+    } else if (patient.species === "cat") {
+      speciesBits.push(this.add.triangle(-11, -19, 0, 18, 9, 0, 18, 18, patient.color, 1).setStrokeStyle(2, 0x51615e, 0.65));
+      speciesBits.push(this.add.triangle(8, -19, 0, 18, 9, 0, 18, 18, patient.color, 1).setStrokeStyle(2, 0x51615e, 0.65));
+    } else {
+      speciesBits.push(this.add.ellipse(-16, -13, 13, 24, patient.color, 1).setAngle(25).setStrokeStyle(2, 0x51615e, 0.65));
+      speciesBits.push(this.add.ellipse(15, -13, 13, 24, patient.color, 1).setAngle(-25).setStrokeStyle(2, 0x51615e, 0.65));
+    }
+
+    const status = this.add.text(0, -46, "CZEKA", this.textStyle(9, "#ffffff", 900))
+      .setOrigin(0.5)
+      .setBackgroundColor(this.priorityColorCss(patient.priority))
+      .setPadding(5, 2, 5, 2);
+    const name = this.add.text(0, 36, patient.displayName, this.textStyle(9, "#344d4e", 800))
+      .setOrigin(0.5)
+      .setBackgroundColor("#fffaf0")
+      .setPadding(5, 2, 5, 2);
+
+    const container = this.add.container(-100, -100, [...speciesBits, body, face, pupil, nose, status, name]).setDepth(24);
+    const view = { container, status, name };
+    this.patientViews.set(patient.id, view);
+    return view;
+  }
+
+  private repositionQueuePatients(): void {
+    this.state.queue.forEach((patient, index) => {
+      const view = this.ensurePatientView(patient);
+      const point = this.layout.patientSpawns[index % this.layout.patientSpawns.length];
+      view.container.setPosition(point.x, point.y);
+      view.status.setText(`${patient.priority === "critical" ? "!!!" : patient.priority === "urgent" ? "!" : ""} CZEKA`);
+    });
+  }
+
+  private updatePatientViews(): void {
+    this.repositionQueuePatients();
+
+    for (const patient of this.state.activePatients) {
+      const view = this.ensurePatientView(patient);
+      if (patient.id === this.escortedPatientId) {
+        const targetX = this.player.x - this.facing.x * 42;
+        const targetY = this.player.y - this.facing.y * 42 + 8;
+        view.container.x = Phaser.Math.Linear(view.container.x, targetX, 0.15);
+        view.container.y = Phaser.Math.Linear(view.container.y, targetY, 0.15);
+        view.status.setText("ZA TOBĄ");
+        continue;
+      }
+
+      const station = this.state.stations.find((candidate) => candidate.patientId === patient.id);
+      if (station) {
+        view.container.x = Phaser.Math.Linear(view.container.x, station.x, 0.14);
+        view.container.y = Phaser.Math.Linear(view.container.y, station.y - station.height / 2 - 34, 0.14);
+        view.status.setText(station.status === "waitingItem" ? `CZEKA: ${ITEM_LABELS[patient.requiredItem]}` : "ZABIEG");
+      }
+    }
+  }
+
+  private sendPatientOut(patientId: string, happy: boolean): void {
+    const view = this.patientViews.get(patientId);
+    if (!view || this.departingPatients.has(patientId)) return;
+    this.departingPatients.add(patientId);
+    view.status.setText(happy ? "ZDROWY!" : "WYCHODZI");
+    view.status.setBackgroundColor(happy ? "#4f9e75" : "#a25e58");
+    this.tweens.add({
+      targets: view.container,
+      x: this.layout.exit.x + 10,
+      y: this.layout.exit.y,
+      alpha: 0,
+      duration: 1400,
+      ease: "Sine.easeInOut",
+      onComplete: () => {
+        view.container.destroy(true);
+        this.patientViews.delete(patientId);
+        this.departingPatients.delete(patientId);
+      },
+    });
   }
 
   private movePlayer(): void {
-    const body = this.player.body;
+    const body = this.player.body as Phaser.Physics.Arcade.Body;
     const left = this.cursors.left.isDown || this.wasd.left.isDown;
     const right = this.cursors.right.isDown || this.wasd.right.isDown;
     const up = this.cursors.up.isDown || this.wasd.up.isDown;
@@ -350,157 +544,192 @@ export class ClinicScene extends Phaser.Scene {
 
     let vx = Number(right) - Number(left);
     let vy = Number(down) - Number(up);
-    if (vx !== 0 && vy !== 0) {
-      vx *= Math.SQRT1_2;
-      vy *= Math.SQRT1_2;
+    if (vx !== 0 || vy !== 0) {
+      const length = Math.hypot(vx, vy) || 1;
+      vx /= length;
+      vy /= length;
+      this.facing.set(vx, vy);
     }
     body.setVelocity(vx * MOVE_SPEED, vy * MOVE_SPEED);
   }
 
   private stopPlayer(): void {
-    if (this.player?.body) this.player.body.setVelocity(0, 0);
+    const body = this.player?.body as Phaser.Physics.Arcade.Body | undefined;
+    body?.setVelocity(0, 0);
+  }
+
+  private updateCarriedItem(): void {
+    if (!this.carriedItem) return;
+    this.carriedItem.container.setPosition(this.player.x + this.facing.x * 8, this.player.y - 48);
+    this.carriedItem.container.setDepth(40);
   }
 
   private handleInteraction(): void {
     const station = this.nearestStation();
-    if (!station) {
-      this.toast("Podejdź bliżej stanowiska.", 0x6d7775);
-      return;
-    }
 
-    if (station.kind === "reception") {
-      this.interactReception();
-      return;
-    }
-
-    if (station.kind === "storage") {
-      this.interactStorage();
-      return;
-    }
-
-    if (station.kind === "treatment" || station.kind === "analyzer") {
-      this.interactTreatmentStation(station);
-      return;
-    }
-  }
-
-  private interactReception(): void {
-    if (this.escortedPatientId) {
-      this.toast("Najpierw zaprowadź obecnego pacjenta do stanowiska.", 0x8b6c4e);
-      return;
-    }
-    const patient = this.state.queue[0];
-    if (!patient) {
-      this.toast("Poczekalnia jest chwilowo pusta.", 0x6d7775);
-      return;
-    }
-
-    this.state = admitPatient(this.state, patient.id);
-    this.escortedPatientId = patient.id;
-    this.toast(`${patient.displayName}: ${patient.symptoms[0]}. Zaprowadź do ${patient.treatmentStation === "analyzer" ? "analizatora" : "gabinetu"}.`);
-    this.refreshUi(true);
-  }
-
-  private interactStorage(): void {
-    if (this.carriedItem) {
-      this.toast(`Odłożono: ${ITEM_LABELS[this.carriedItem]}.`, 0x6d7775);
-      this.carriedItem = undefined;
-      this.refreshUi(true);
-      return;
-    }
-
-    const waitingPatient = this.state.activePatients.find((patient) =>
-      this.state.stations.some((station) => station.patientId === patient.id && station.status === "waitingItem"),
-    );
-    const dirtyExists = this.state.stations.some((station) => station.status === "dirty");
-    this.carriedItem = waitingPatient?.requiredItem ?? (dirtyExists ? "disinfectant" : "bandage");
-    this.toast(`Pobrano: ${ITEM_LABELS[this.carriedItem]}.`);
-    this.refreshUi(true);
-  }
-
-  private interactTreatmentStation(station: StationState): void {
-    if (this.escortedPatientId) {
-      const before = this.state;
-      this.state = assignPatientToStation(this.state, this.escortedPatientId, station.id);
-      if (this.state === before) {
-        const patient = this.findPatient(this.escortedPatientId);
-        this.toast(`${patient?.displayName ?? "Pacjent"} potrzebuje innego stanowiska.`, 0x9b6558);
-        return;
-      }
-      const patient = this.findPatient(this.escortedPatientId);
-      this.escortedPatientId = undefined;
-      this.toast(`${patient?.displayName ?? "Pacjent"} czeka na: ${patient ? ITEM_LABELS[patient.requiredItem] : "narzędzie"}.`);
-      this.refreshUi(true);
-      return;
-    }
-
-    const current = this.state.stations.find((candidate) => candidate.id === station.id)!;
-    if (current.status === "dirty") {
-      if (this.carriedItem !== "disinfectant") {
-        this.toast("Stanowisko trzeba odkazić. Pobierz środek z magazynu.", 0x9b6558);
-        return;
-      }
+    if (station?.status === "dirty" && this.carriedItem?.type === "disinfectant") {
       this.state = cleanStation(this.state, station.id);
-      this.carriedItem = undefined;
-      this.toast("Stanowisko czyste — gotowe dla kolejnego pacjenta.");
+      this.consumeCarriedItem();
+      this.toast(`${station.label}: stanowisko wyczyszczone.`);
       this.refreshUi(true);
       return;
     }
 
-    if (!current.patientId) {
-      this.toast("Stanowisko jest wolne.", 0x6d7775);
-      return;
-    }
-
-    const patient = this.findPatient(current.patientId);
-    if (!patient) return;
-
-    if (current.status === "waitingItem") {
-      if (this.carriedItem !== patient.requiredItem) {
-        this.state = registerMistake(this.state, 2);
-        this.toast(`Potrzebujesz: ${ITEM_LABELS[patient.requiredItem]}.`, 0x9b6558);
+    if (this.escortedPatientId && station?.status === "available") {
+      const patient = this.state.activePatients.find((candidate) => candidate.id === this.escortedPatientId);
+      if (patient && station.kind === patient.treatmentStation) {
+        this.state = assignPatientToStation(this.state, patient.id, station.id);
+        this.escortedPatientId = undefined;
+        this.toast(`${patient.displayName} trafia do: ${station.label}.`);
+        this.refreshUi(true);
         return;
       }
-      this.state = deliverRequiredItem(this.state, patient.id, this.carriedItem);
-      this.carriedItem = undefined;
-      this.toast("Narzędzie przygotowane. Zaczynamy procedurę!");
-      this.refreshUi(true);
     }
 
-    const readyStation = this.state.stations.find((candidate) => candidate.id === station.id)!;
-    if (readyStation.status === "procedure") this.startMinigame(patient);
+    if (station?.kind === "reception" && !this.escortedPatientId && this.state.queue.length > 0) {
+      const patient = this.state.queue[0];
+      this.state = admitPatient(this.state, patient.id);
+      this.escortedPatientId = patient.id;
+      this.toast(`Przyjęto: ${patient.displayName}. Zaprowadź pacjenta do właściwego pokoju.`);
+      this.repositionQueuePatients();
+      this.refreshUi(true);
+      return;
+    }
+
+    if (station?.patientId && station.status === "waitingItem" && this.carriedItem) {
+      const patient = this.state.activePatients.find((candidate) => candidate.id === station.patientId);
+      if (!patient) return;
+      const correct = patient.requiredItem === this.carriedItem.type;
+      this.state = deliverRequiredItem(this.state, patient.id, this.carriedItem.type);
+      if (correct) {
+        this.toast(`${ITEM_LABELS[this.carriedItem.type]} dostarczony. Stanowisko gotowe do procedury.`);
+        this.consumeCarriedItem();
+      } else {
+        this.toast(`To nie ten przedmiot. Potrzebny: ${ITEM_LABELS[patient.requiredItem]}.`, 0x9b5a55);
+      }
+      this.refreshUi(true);
+      return;
+    }
+
+    if (station?.patientId && station.status === "procedure" && !this.carriedItem) {
+      const patient = this.state.activePatients.find((candidate) => candidate.id === station.patientId);
+      if (patient) {
+        this.startMinigame(patient);
+        return;
+      }
+    }
+
+    if (!this.carriedItem) {
+      const item = this.nearestWorldItem();
+      if (item) {
+        this.pickUpItem(item);
+        return;
+      }
+    } else {
+      this.dropCarriedItem();
+      return;
+    }
+
+    if (station?.status === "dirty") {
+      this.toast("Brudne stanowisko — przynieś środek do dezynfekcji.", 0x8f6358);
+      return;
+    }
+
+    if (station?.status === "waitingItem" && station.patientId) {
+      const patient = this.state.activePatients.find((candidate) => candidate.id === station.patientId);
+      if (patient) this.toast(`Potrzebny przedmiot: ${ITEM_LABELS[patient.requiredItem]}.`);
+      return;
+    }
+
+    this.toast("Tu nie ma teraz nic do zrobienia.", 0x6d7775);
+  }
+
+  private pickUpItem(item: WorldItem): void {
+    item.carried = true;
+    this.carriedItem = item;
+    item.container.setScale(1.12);
+    this.toast(`Podnosisz: ${ITEM_LABELS[item.type]}.`);
+    this.refreshUi(true);
+  }
+
+  private dropCarriedItem(): void {
+    if (!this.carriedItem) return;
+    const item = this.carriedItem;
+    item.carried = false;
+    item.container.setScale(1);
+    item.container.setPosition(
+      Phaser.Math.Clamp(this.player.x + this.facing.x * 56, 28, WIDTH - 28),
+      Phaser.Math.Clamp(this.player.y + this.facing.y * 56, HUD_H + 20, HEIGHT - 26),
+    );
+    item.container.setDepth(14);
+    this.carriedItem = undefined;
+    this.toast(`Odkładasz: ${ITEM_LABELS[item.type]}.`);
+    this.refreshUi(true);
+  }
+
+  private consumeCarriedItem(): void {
+    if (!this.carriedItem) return;
+    const item = this.carriedItem;
+    this.carriedItem = undefined;
+    item.carried = false;
+    item.container.setVisible(false).setScale(1);
+    this.time.delayedCall(1600, () => {
+      item.container.setPosition(item.homeX, item.homeY).setVisible(true).setDepth(14);
+    });
+  }
+
+  private nearestWorldItem(): WorldItem | undefined {
+    let best: WorldItem | undefined;
+    let distance = ITEM_DISTANCE;
+    for (const item of this.worldItems) {
+      if (item.carried || !item.container.visible) continue;
+      const current = Phaser.Math.Distance.Between(this.player.x, this.player.y, item.container.x, item.container.y);
+      if (current < distance) {
+        best = item;
+        distance = current;
+      }
+    }
+    return best;
+  }
+
+  private nearestStation(): StationState | undefined {
+    let best: StationState | undefined;
+    let distance = INTERACT_DISTANCE;
+    for (const station of this.state.stations) {
+      const dx = Math.max(Math.abs(this.player.x - station.x) - station.width / 2, 0);
+      const dy = Math.max(Math.abs(this.player.y - station.y) - station.height / 2, 0);
+      const current = Math.hypot(dx, dy);
+      if (current < distance) {
+        best = station;
+        distance = current;
+      }
+    }
+    return best;
   }
 
   private startMinigame(patient: PatientCase): void {
-    this.stopPlayer();
-    if (patient.procedure === "sampleAnalysis") {
-      this.startSampleMinigame(patient);
-    } else {
-      this.startTimingMinigame(patient);
-    }
+    if (patient.procedure === "sampleAnalysis") this.startSampleMinigame(patient);
+    else this.startTimingMinigame(patient);
   }
 
   private startTimingMinigame(patient: PatientCase): void {
-    const shade = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x173236, 0.78);
-    const panel = this.add.rectangle(WIDTH / 2, HEIGHT / 2, 720, 390, 0xfffbf3, 1).setStrokeStyle(5, 0x8cb5a5, 1);
-    const title = this.add.text(WIDTH / 2, 224, PROCEDURE_LABELS[patient.procedure], this.textStyle(30, "#284b50", 900)).setOrigin(0.5);
-    const subtitle = this.add.text(WIDTH / 2, 265, `${patient.displayName} • trafiaj w zielone pole`, this.textStyle(16, "#6b7c79", 800)).setOrigin(0.5);
+    const shade = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x173236, 0.65);
+    const panel = this.add.rectangle(WIDTH / 2, HEIGHT / 2, 650, 330, 0xfffbf3, 1).setStrokeStyle(4, 0x8cb5a5, 1);
+    const title = this.add.text(WIDTH / 2, 245, PROCEDURE_LABELS[patient.procedure], this.textStyle(26, "#284b50", 900)).setOrigin(0.5);
+    const info = this.add.text(WIDTH / 2, 286, "Naciśnij E / Space, gdy wskaźnik jest w zielonej strefie. 3 próby.", this.textStyle(13, "#607774", 750)).setOrigin(0.5);
+    const bar = this.add.rectangle(WIDTH / 2, 365, 380, 24, 0xcbd6d1, 1).setStrokeStyle(2, 0x6e817c, 1);
+    const zone = this.add.rectangle(WIDTH / 2, 365, 95, 24, 0x75b98f, 1);
+    const marker = this.add.rectangle(WIDTH / 2 - 185, 365, 10, 46, 0xe07063, 1);
+    const progress = this.add.text(WIDTH / 2, 425, "Próby: 0 / 3", this.textStyle(16, "#385557", 900)).setOrigin(0.5);
+    const container = this.add.container(0, 0, [shade, panel, title, info, bar, zone, marker, progress]).setDepth(400);
 
-    const bar = this.add.rectangle(WIDTH / 2, 364, 480, 36, 0xd8d3c7, 1).setStrokeStyle(3, 0xa9a295, 1);
-    const target = this.add.rectangle(WIDTH / 2 + 84, 364, 108, 36, 0x7cc39d, 1);
-    const marker = this.add.rectangle(WIDTH / 2 - 230, 364, 14, 58, 0x284b50, 1);
-    const instruction = this.add.text(WIDTH / 2, 423, "Naciśnij E, gdy wskaźnik jest w zielonym polu", this.textStyle(16, "#37585a", 900)).setOrigin(0.5);
-    const progressText = this.add.text(WIDTH / 2, 470, "Próba 1 / 3", this.textStyle(16, "#8b6c4e", 900)).setOrigin(0.5);
-    const cancel = this.add.text(WIDTH / 2, 526, "Pomyłka nie kończy zabiegu — obniża tylko jakość", this.textStyle(13, "#7a8079", 700)).setOrigin(0.5);
-
-    const container = this.add.container(0, 0, [shade, panel, title, subtitle, bar, target, marker, instruction, progressText, cancel]).setDepth(300);
     this.activeMinigame = {
       kind: "timing",
       patientId: patient.id,
       procedure: patient.procedure,
       container,
       marker,
-      progressText,
+      progress,
       attempts: 0,
       accuracySum: 0,
       startedAt: this.time.now,
@@ -508,296 +737,234 @@ export class ClinicScene extends Phaser.Scene {
   }
 
   private startSampleMinigame(patient: PatientCase): void {
-    const sequence = Array.from({ length: 4 }, () => Phaser.Math.Between(1, 3));
-    const shade = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x173236, 0.78);
-    const panel = this.add.rectangle(WIDTH / 2, HEIGHT / 2, 720, 410, 0xfffbf3, 1).setStrokeStyle(5, 0x8cb5a5, 1);
-    const title = this.add.text(WIDTH / 2, 213, "ANALIZA PRÓBKI", this.textStyle(30, "#284b50", 900)).setOrigin(0.5);
-    const subtitle = this.add.text(WIDTH / 2, 254, `${patient.displayName} • wybieraj wskazaną probówkę`, this.textStyle(16, "#6b7c79", 800)).setOrigin(0.5);
-    const promptText = this.add.text(WIDTH / 2, 322, `PRÓBÓWKA ${sequence[0]}`, this.textStyle(28, "#284b50", 900)).setOrigin(0.5);
-
-    const buttons: Phaser.GameObjects.GameObject[] = [];
-    [1, 2, 3].forEach((number, index) => {
-      const x = WIDTH / 2 - 150 + index * 150;
-      const rect = this.add.rectangle(x, 405, 112, 78, [0x91c8c5, 0xe5b27f, 0xc9a7c8][index], 1).setStrokeStyle(3, 0xffffff, 1);
-      const label = this.add.text(x, 405, String(number), this.textStyle(26, "#ffffff", 900)).setOrigin(0.5);
-      buttons.push(rect, label);
-    });
-
-    const progressText = this.add.text(WIDTH / 2, 482, "0 / 4 poprawnych", this.textStyle(16, "#8b6c4e", 900)).setOrigin(0.5);
-    const instruction = this.add.text(WIDTH / 2, 532, "Klawisze 1–3 • błędna próbka kosztuje czas, ale możesz poprawić", this.textStyle(13, "#6d7775", 700)).setOrigin(0.5);
-    const container = this.add.container(0, 0, [shade, panel, title, subtitle, promptText, ...buttons, progressText, instruction]).setDepth(300);
+    const sequence = [0, 1, 2].map(() => Phaser.Math.Between(1, 4));
+    const shade = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x173236, 0.65);
+    const panel = this.add.rectangle(WIDTH / 2, HEIGHT / 2, 660, 350, 0xfffbf3, 1).setStrokeStyle(4, 0x8cb5a5, 1);
+    const title = this.add.text(WIDTH / 2, 235, "ANALIZA PRÓBKI", this.textStyle(26, "#284b50", 900)).setOrigin(0.5);
+    const info = this.add.text(WIDTH / 2, 280, "Dobierz właściwy filtr klawiszami 1–4.", this.textStyle(14, "#607774", 750)).setOrigin(0.5);
+    const prompt = this.add.text(WIDTH / 2, 360, `FILTR ${sequence[0]}`, this.textStyle(38, "#ffffff", 900))
+      .setOrigin(0.5)
+      .setBackgroundColor("#4b8c91")
+      .setPadding(28, 12, 28, 12);
+    const progress = this.add.text(WIDTH / 2, 440, "Próbka: 1 / 3", this.textStyle(16, "#385557", 900)).setOrigin(0.5);
+    const container = this.add.container(0, 0, [shade, panel, title, info, prompt, progress]).setDepth(400);
 
     this.activeMinigame = {
       kind: "sample",
       patientId: patient.id,
       procedure: patient.procedure,
       container,
-      promptText,
-      progressText,
+      prompt,
+      progress,
       sequence,
       index: 0,
-      attempts: 0,
       correct: 0,
+      attempts: 0,
       startedAt: this.time.now,
     };
   }
 
   private updateMinigame(time: number): void {
-    const game = this.activeMinigame;
-    if (!game) return;
+    const minigame = this.activeMinigame;
+    if (!minigame) return;
 
-    if (game.kind === "timing") {
-      const normalized = (Math.sin((time - game.startedAt) / 380) + 1) / 2;
-      const x = WIDTH / 2 - 230 + normalized * 460;
-      game.marker.x = x;
-
-      if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
-        const targetCenter = WIDTH / 2 + 84;
-        const distance = Math.abs(x - targetCenter);
-        const accuracy = Phaser.Math.Clamp(1 - distance / 235, 0.15, 1);
-        game.accuracySum += accuracy;
-        game.attempts += 1;
-        game.progressText.setText(game.attempts >= 3 ? "Gotowe" : `Próba ${game.attempts + 1} / 3`);
-        if (game.attempts >= 3) this.finishMinigame(game.patientId, game.accuracySum / game.attempts, time - game.startedAt);
+    if (minigame.kind === "timing") {
+      const phase = ((time - minigame.startedAt) % 1800) / 1800;
+      minigame.marker.x = WIDTH / 2 - 185 + Math.abs(Math.sin(phase * Math.PI)) * 370;
+      if (this.interactionPressed()) {
+        const accuracy = Math.max(0, 1 - Math.abs(minigame.marker.x - WIDTH / 2) / 180);
+        minigame.accuracySum += accuracy;
+        minigame.attempts += 1;
+        minigame.progress.setText(`Próby: ${minigame.attempts} / 3   Trafienie: ${Math.round(accuracy * 100)}%`);
+        if (minigame.attempts >= 3) {
+          const average = minigame.accuracySum / minigame.attempts;
+          this.finishMinigame(minigame.patientId, average, time - minigame.startedAt);
+        }
       }
       return;
     }
 
-    for (let i = 0; i < 3; i++) {
-      if (!Phaser.Input.Keyboard.JustDown(this.numberKeys[i])) continue;
-      const chosen = i + 1;
-      game.attempts += 1;
-      if (chosen === game.sequence[game.index]) {
-        game.correct += 1;
-        game.index += 1;
-        game.progressText.setText(`${game.correct} / 4 poprawnych`);
-        if (game.index >= game.sequence.length) {
-          const accuracy = Phaser.Math.Clamp(game.correct / Math.max(game.attempts, 1), 0.25, 1);
-          this.finishMinigame(game.patientId, accuracy, time - game.startedAt);
-        } else {
-          game.promptText.setText(`PRÓBÓWKA ${game.sequence[game.index]}`);
-        }
+    for (let index = 0; index < this.numberKeys.length; index += 1) {
+      if (!Phaser.Input.Keyboard.JustDown(this.numberKeys[index])) continue;
+      const choice = index + 1;
+      const expected = minigame.sequence[minigame.index];
+      minigame.attempts += 1;
+      if (choice === expected) minigame.correct += 1;
+      else this.state = registerMistake(this.state, 2);
+      minigame.index += 1;
+
+      if (minigame.index >= minigame.sequence.length) {
+        const accuracy = minigame.correct / minigame.sequence.length;
+        this.finishMinigame(minigame.patientId, accuracy, time - minigame.startedAt);
       } else {
-        game.progressText.setText(`${game.correct} / 4 • zła próbka, spróbuj ponownie`);
-        if (game.attempts >= 8) this.finishMinigame(game.patientId, 0.4, time - game.startedAt);
+        minigame.prompt.setText(`FILTR ${minigame.sequence[minigame.index]}`);
+        minigame.progress.setText(`Próbka: ${minigame.index + 1} / ${minigame.sequence.length}`);
       }
+      break;
     }
   }
 
   private finishMinigame(patientId: string, accuracy: number, durationMs: number): void {
-    const quality: TreatmentQuality = accuracy >= 0.86 ? "perfect" : accuracy >= 0.62 ? "correct" : "quick";
+    const quality: TreatmentQuality = accuracy >= 0.82 ? "perfect" : accuracy >= 0.55 ? "correct" : "quick";
     this.activeMinigame?.container.destroy(true);
     this.activeMinigame = undefined;
+    const patient = this.state.activePatients.find((candidate) => candidate.id === patientId);
     this.state = completeTreatment(this.state, patientId, { quality, accuracy, durationMs });
-    this.toast(`Pacjent wyleczony • jakość: ${this.qualityLabel(quality)} • +monety`);
+    if (patient) this.toast(`${patient.displayName}: ${quality === "perfect" ? "perfekcyjnie" : quality === "correct" ? "dobrze" : "szybko"}!`);
+    this.sendPatientOut(patientId, true);
     this.refreshUi(true);
   }
 
-  private refreshUi(force = false): void {
-    if (!force && this.activeMinigame) return;
-
-    const seconds = Math.ceil(this.state.remainingMs / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const rest = String(seconds % 60).padStart(2, "0");
-    const stress = Math.round(this.state.clinicStress);
-    const carried = this.carriedItem ? ITEM_LABELS[this.carriedItem] : "puste ręce";
-    this.hudText.setText(
-      `ANIMAL CARE CO-OP    ${minutes}:${rest}    ♥ stres kliniki ${stress}%    ★ ${scoreTotal(this.state.score)}    ◉ ${this.state.score.coins}    ✚ ${carried}`,
-    );
-
-    this.queueLayer.removeAll(true);
-    if (this.state.queue.length === 0) {
-      this.queueLayer.add(this.add.text(34, 165, "Brak pacjentów\nw kolejce", this.textStyle(15, "#78837e", 800)));
-    } else {
-      this.state.queue.forEach((patient, index) => {
-        const y = 164 + index * 146;
-        const card = this.add.rectangle(122, y + 54, 190, 126, 0xfffbf3, 1).setStrokeStyle(3, this.priorityColor(patient.priority), 1);
-        const species = this.add.text(42, y + 14, this.speciesEmoji(patient), this.textStyle(28, "#284b50", 900));
-        const name = this.add.text(80, y + 16, patient.displayName, this.textStyle(14, "#284b50", 900));
-        const symptom = this.add.text(42, y + 51, patient.symptoms[0], this.textStyle(12, "#65746f", 700));
-        const patience = Math.round((patient.remainingPatienceMs / patient.patienceMs) * 100);
-        const barBg = this.add.rectangle(122, y + 91, 154, 9, 0xd8d3c7, 1);
-        const bar = this.add.rectangle(45 + (154 * patience) / 200, y + 91, 1.54 * patience, 9, this.priorityColor(patient.priority), 1).setOrigin(0, 0.5);
-        const priority = this.add.text(42, y + 103, `${patient.priority.toUpperCase()} • ${patience}% cierpliwości`, this.textStyle(10, "#756f68", 800));
-        this.queueLayer.add([card, species, name, symptom, barBg, bar, priority]);
-      });
-    }
-
-    this.stationStatusLayer.removeAll(true);
-    for (const station of this.state.stations) {
-      if (station.kind === "reception" || station.kind === "storage" || station.kind === "exit") continue;
-      const current = this.state.stations.find((candidate) => candidate.id === station.id)!;
-      const patient = current.patientId ? this.findPatient(current.patientId) : undefined;
-      const text = this.stationStatusText(current, patient);
-      const badge = this.add.text(station.x, station.y + station.height / 2 + 18, text, this.textStyle(11, "#ffffff", 900))
-        .setOrigin(0.5)
-        .setBackgroundColor(this.stationStatusColor(current.status))
-        .setPadding(8, 4, 8, 4);
-      this.stationStatusLayer.add(badge);
-    }
-
-    this.hintText.setText(this.currentHint());
-    this.updateEscortBadge();
-  }
-
-  private currentHint(): string {
-    const station = this.nearestStation();
-    if (!station) return "Podejdź do stanowiska • WASD / strzałki — ruch";
-
-    if (station.kind === "reception") {
-      if (this.escortedPatientId) return "Najpierw zaprowadź pacjenta do wskazanej stacji";
-      return this.state.queue.length ? "E — przyjmij pierwszego pacjenta" : "Recepcja • poczekalnia pusta";
-    }
-    if (station.kind === "storage") {
-      return this.carriedItem ? `E — odłóż ${ITEM_LABELS[this.carriedItem]}` : "E — pobierz potrzebny przedmiot";
-    }
-    if (station.kind === "treatment" || station.kind === "analyzer") {
-      if (this.escortedPatientId) return `E — umieść pacjenta w ${station.label.toLowerCase()}`;
-      const current = this.state.stations.find((candidate) => candidate.id === station.id)!;
-      if (current.status === "dirty") return "E — odkaź stanowisko (potrzebny środek)";
-      if (current.status === "waitingItem") return "E — dostarcz wymagany przedmiot";
-      if (current.status === "procedure") return "E — rozpocznij procedurę";
-      return `${station.label} • wolne stanowisko`;
-    }
-    return "E — interakcja";
-  }
-
-  private nearestStation(maxDistance = INTERACT_DISTANCE): StationState | undefined {
-    let best: StationState | undefined;
-    let bestDistance = maxDistance;
-    for (const station of this.state.stations) {
-      if (station.kind === "exit") continue;
-      const dx = Math.max(Math.abs(this.player.x - station.x) - station.width / 2, 0);
-      const dy = Math.max(Math.abs(this.player.y - station.y) - station.height / 2, 0);
-      const distance = Math.hypot(dx, dy);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = station;
-      }
-    }
-    return best;
-  }
-
   private pingPriorityTask(): void {
-    const patient = this.state.activePatients.find((candidate) => candidate.priority === "critical")
-      ?? this.state.activePatients[0]
-      ?? this.state.queue[0];
-    if (!patient) {
-      this.toast("Ping: wszystko pod kontrolą.", 0x6d7775);
+    if (this.escortedPatientId) {
+      const patient = this.state.activePatients.find((candidate) => candidate.id === this.escortedPatientId);
+      if (patient) this.toast(`Cel: zaprowadź ${patient.displayName} do ${patient.treatmentStation === "analyzer" ? "diagnostyki" : "gabinetu zabiegowego"}.`);
       return;
     }
-    const station = this.state.stations.find((candidate) => candidate.patientId === patient.id);
-    if (station?.status === "waitingItem") {
-      this.toast(`PING → ${patient.displayName}: ${ITEM_LABELS[patient.requiredItem]} do ${station.label}.`, 0xd6815e);
-    } else if (patient.state === "queue") {
-      this.toast(`PING → ${patient.displayName} czeka w recepcji.`, 0xd6815e);
+    const waiting = this.state.stations.find((station) => station.status === "waitingItem" && station.patientId);
+    if (waiting?.patientId) {
+      const patient = this.state.activePatients.find((candidate) => candidate.id === waiting.patientId);
+      if (patient) this.toast(`Cel: ${ITEM_LABELS[patient.requiredItem]} → ${waiting.label}.`);
+      return;
+    }
+    const dirty = this.state.stations.find((station) => station.status === "dirty");
+    if (dirty) {
+      this.toast(`Cel: środek do dezynfekcji → ${dirty.label}.`);
+      return;
+    }
+    if (this.state.queue.length > 0) {
+      this.toast("Cel: podejdź do recepcji i przyjmij pierwszego pacjenta.");
+      return;
+    }
+    this.toast("Na razie spokojnie — przygotuj się na następnego pacjenta.");
+  }
+
+  private refreshUi(force = false): void {
+    const seconds = Math.ceil(this.state.remainingMs / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const sec = String(seconds % 60).padStart(2, "0");
+    this.hudText.setText(
+      `ZMIANA 1   ${minutes}:${sec}   •   Wynik ${scoreTotal(this.state.score)}   •   Wyleczeni ${this.state.score.treated}   •   Stres ${Math.round(this.state.clinicStress)}%   •   Seed ${this.seed}`,
+    );
+    this.itemText.setText(this.carriedItem ? `NIESIESZ: ${ITEM_LABELS[this.carriedItem.type]}` : "RĘCE WOLNE");
+    this.refreshStationStatuses();
+    this.updateHint();
+    if (force) this.updatePatientViews();
+  }
+
+  private refreshStationStatuses(): void {
+    this.stationStatusLayer.removeAll(true);
+    for (const station of this.state.stations) {
+      if (station.status === "available") continue;
+      let label = station.status.toUpperCase();
+      let color = "#6c7774";
+      if (station.status === "waitingItem") {
+        const patient = this.state.activePatients.find((candidate) => candidate.id === station.patientId);
+        label = patient ? `POTRZEBA: ${ITEM_LABELS[patient.requiredItem]}` : "CZEKA";
+        color = "#b17c4e";
+      } else if (station.status === "procedure") {
+        label = "GOTOWE DO ZABIEGU";
+        color = "#4d8b87";
+      } else if (station.status === "dirty") {
+        label = "BRUDNE";
+        color = "#9d5f57";
+      }
+      const text = this.add.text(station.x, station.y + station.height / 2 + 16, label, this.textStyle(9, "#ffffff", 900))
+        .setOrigin(0.5)
+        .setBackgroundColor(color)
+        .setPadding(6, 2, 6, 2);
+      this.stationStatusLayer.add(text);
+    }
+  }
+
+  private updateHint(): void {
+    if (this.activeMinigame) return;
+    const station = this.nearestStation();
+    const item = !this.carriedItem ? this.nearestWorldItem() : undefined;
+
+    if (station?.status === "dirty" && this.carriedItem?.type === "disinfectant") {
+      this.hintText.setText("E — wyczyść stanowisko");
+    } else if (this.escortedPatientId && station?.status === "available") {
+      const patient = this.state.activePatients.find((candidate) => candidate.id === this.escortedPatientId);
+      this.hintText.setText(patient && station.kind === patient.treatmentStation ? `E — zostaw pacjenta przy ${station.label}` : "To nie jest właściwe stanowisko dla pacjenta");
+    } else if (station?.kind === "reception" && this.state.queue.length > 0 && !this.escortedPatientId) {
+      this.hintText.setText(`E — przyjmij: ${this.state.queue[0].displayName}`);
+    } else if (station?.status === "waitingItem" && station.patientId && this.carriedItem) {
+      const patient = this.state.activePatients.find((candidate) => candidate.id === station.patientId);
+      this.hintText.setText(patient ? `E — dostarcz przedmiot • potrzebny ${ITEM_LABELS[patient.requiredItem]}` : "E — interakcja");
+    } else if (station?.status === "procedure" && station.patientId && !this.carriedItem) {
+      this.hintText.setText("E — rozpocznij procedurę");
+    } else if (item) {
+      this.hintText.setText(`E — podnieś ${ITEM_LABELS[item.type]}`);
+    } else if (this.carriedItem) {
+      this.hintText.setText(`E — odłóż ${ITEM_LABELS[this.carriedItem.type]}`);
     } else {
-      this.toast(`PING → ${patient.displayName}: kontynuuj leczenie.`, 0xd6815e);
+      this.hintText.setText("Q — pokaż najważniejsze zadanie");
     }
   }
 
   private showResults(): void {
     this.resultsShown = true;
+    const shade = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x173236, 0.75);
+    const panel = this.add.rectangle(WIDTH / 2, HEIGHT / 2, 680, 420, 0xfffbf3, 1).setStrokeStyle(5, 0x8cb5a5, 1);
     const stars = starRating(this.state.score);
-    const shade = this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0x173236, 0.8);
-    const panel = this.add.rectangle(WIDTH / 2, HEIGHT / 2, 700, 470, 0xfffbf3, 1).setStrokeStyle(5, 0x8cb5a5, 1);
-    const title = this.add.text(WIDTH / 2, 170, "KONIEC ZMIANY", this.textStyle(34, "#284b50", 900)).setOrigin(0.5);
-    const starText = this.add.text(WIDTH / 2, 229, `${"★".repeat(stars)}${"☆".repeat(3 - stars)}`, this.textStyle(44, "#d3a24c", 900)).setOrigin(0.5);
-    const stats = this.add.text(
+    const title = this.add.text(WIDTH / 2, 205, "KONIEC ZMIANY", this.textStyle(30, "#284b50", 900)).setOrigin(0.5);
+    const starText = this.add.text(WIDTH / 2, 260, `${"★".repeat(stars)}${"☆".repeat(3 - stars)}`, this.textStyle(40, "#d3a34d", 900)).setOrigin(0.5);
+    const body = this.add.text(
       WIDTH / 2,
-      360,
-      `Wyleczeni pacjenci      ${this.state.score.treated}\nOpieka                   ${this.state.score.care}\nTempo                    ${this.state.score.tempo}\nBezpieczeństwo           ${this.state.score.safety}\nMonety                    ${this.state.score.coins}\nŁączny wynik              ${scoreTotal(this.state.score)}`,
-      { ...this.textStyle(18, "#355255", 800), lineSpacing: 10 },
+      370,
+      `Wyleczeni: ${this.state.score.treated}\nMonety: ${this.state.score.coins}\nBłędy: ${this.state.score.mistakes}\nWynik: ${scoreTotal(this.state.score)}\nSeed kliniki: ${this.seed}`,
+      { ...this.textStyle(17, "#405b5b", 800), align: "center", lineSpacing: 8 },
     ).setOrigin(0.5);
-    const note = this.add.text(WIDTH / 2, 545, "R — zagraj zmianę ponownie", this.textStyle(16, "#ffffff", 900))
+    const again = this.add.text(WIDTH / 2, 520, "R — WYGENERUJ NOWY SZPITAL", this.textStyle(15, "#ffffff", 900))
       .setOrigin(0.5)
       .setBackgroundColor("#3c8f91")
       .setPadding(18, 10, 18, 10);
-    this.resultsLayer = this.add.container(0, 0, [shade, panel, title, starText, stats, note]).setDepth(400);
+    this.resultsLayer = this.add.container(0, 0, [shade, panel, title, starText, body, again]).setDepth(500);
   }
 
-  private updateEscortBadge(): void {
-    const patient = this.escortedPatientId ? this.findPatient(this.escortedPatientId) : undefined;
-    if (!patient) {
-      this.escortBadge.setVisible(false);
-      return;
-    }
-    this.escortBadge.setVisible(true).setPosition(this.player.x + 28, this.player.y - 34);
-    this.escortBadgeText.setText(this.speciesEmoji(patient));
+  private toast(message: string, color = 0x3c8f91): void {
+    this.toastText.setText(message).setBackgroundColor(`#${color.toString(16).padStart(6, "0")}`).setAlpha(1);
+    this.tweens.killTweensOf(this.toastText);
+    this.tweens.add({ targets: this.toastText, alpha: 0, delay: 1800, duration: 320 });
   }
 
-  private findPatient(patientId: string): PatientCase | undefined {
-    return [...this.state.queue, ...this.state.activePatients, ...this.state.completedPatients].find((patient) => patient.id === patientId);
-  }
-
-  private stationStatusText(station: StationState, patient?: PatientCase): string {
-    if (station.status === "available") return "WOLNE";
-    if (station.status === "dirty") return "DO ODKAŻENIA";
-    if (station.status === "waitingItem") return patient ? `CZEKA: ${ITEM_LABELS[patient.requiredItem]}` : "CZEKA NA NARZĘDZIE";
-    if (station.status === "procedure") return patient ? `GOTOWE: ${PROCEDURE_LABELS[patient.procedure]}` : "GOTOWE DO ZABIEGU";
-    return station.status.toUpperCase();
-  }
-
-  private stationStatusColor(status: StationState["status"]): string {
-    if (status === "available") return "#62937d";
-    if (status === "dirty") return "#a66758";
-    if (status === "waitingItem") return "#b18445";
-    if (status === "procedure") return "#3c8f91";
-    return "#6d7775";
-  }
-
-  private stationBaseColor(kind: StationState["kind"]): number {
-    if (kind === "reception") return 0xb7d6ca;
-    if (kind === "storage") return 0xd9e6ef;
-    if (kind === "analyzer") return 0xbad6e6;
-    if (kind === "treatment") return 0xf0c9bf;
-    return 0xd9dfcf;
+  private roomSubtitle(kind: ClinicRoomKind): string {
+    if (kind === "waiting") return "pacjenci czekają tutaj fizycznie";
+    if (kind === "reception") return "przyjmowanie i delegowanie";
+    if (kind === "storage") return "narzędzia i środki";
+    if (kind === "analyzer") return "próbki i diagnostyka";
+    return "leczenie i procedury";
   }
 
   private stationSubtitle(station: StationState): string {
     if (station.kind === "reception") return "przyjmij pacjenta";
-    if (station.kind === "storage") return "narzędzia i środki";
-    if (station.kind === "analyzer") return "próbki i diagnostyka";
-    if (station.kind === "treatment") return "procedura leczenia";
-    return "pacjent opuszcza klinikę";
+    if (station.kind === "storage") return "przedmioty leżą obok";
+    if (station.kind === "analyzer") return "analiza próbek";
+    return "stół zabiegowy";
   }
 
-  private speciesEmoji(patient: PatientCase): string {
-    if (patient.species === "dog") return "🐶";
-    if (patient.species === "cat") return "🐱";
-    return "🐰";
+  private stationBaseColor(kind: StationState["kind"]): number {
+    if (kind === "reception") return 0xb6d7c9;
+    if (kind === "storage") return 0xdcc79e;
+    if (kind === "analyzer") return 0xaecbdd;
+    return 0xd8b4ac;
   }
 
-  private priorityColor(priority: PatientCase["priority"]): number {
-    if (priority === "critical") return 0xc95f54;
-    if (priority === "urgent") return 0xd59a50;
-    return 0x78a58e;
+  private priorityColorCss(priority: PatientCase["priority"]): string {
+    if (priority === "critical") return "#b9504f";
+    if (priority === "urgent") return "#c88445";
+    return "#5d8d76";
   }
 
-  private qualityLabel(quality: TreatmentQuality): string {
-    if (quality === "perfect") return "PERFEKCYJNA";
-    if (quality === "correct") return "POPRAWNA";
-    return "SZYBKA";
-  }
-
-  private toast(message: string, color = 0x3c8f91): void {
-    this.lastToastAt = this.time.now;
-    this.toastText.setText(message).setBackgroundColor(`#${color.toString(16).padStart(6, "0")}`).setAlpha(1);
-    this.tweens.killTweensOf(this.toastText);
-    this.tweens.add({
-      targets: this.toastText,
-      alpha: 0,
-      delay: 2200,
-      duration: 450,
-    });
-  }
-
-  private textStyle(size: number, color: string, weight: number): Phaser.Types.GameObjects.Text.TextStyle {
+  private textStyle(size: number, color: string, fontWeight: number): Phaser.Types.GameObjects.Text.TextStyle {
     return {
-      fontFamily: "Nunito, Arial, sans-serif",
+      fontFamily: "Inter, Segoe UI, Arial, sans-serif",
       fontSize: `${size}px`,
-      fontStyle: weight >= 900 ? "bold" : "normal",
       color,
-    };
+      fontStyle: "normal",
+      fontFamily: "Inter, Segoe UI, Arial, sans-serif",
+      fontWeight: `${fontWeight}`,
+    } as Phaser.Types.GameObjects.Text.TextStyle;
   }
 }
