@@ -1,3 +1,4 @@
+import type { ItemType } from "./domain";
 import type { ClinicLayout, ClinicRoomLayout, Point } from "./layout";
 
 export type DecorationKind = "chair" | "plant" | "cabinet" | "sink" | "bin";
@@ -10,6 +11,16 @@ export interface CounterSurface {
   width: number;
   height: number;
   capacity: number;
+}
+
+export interface SupplyCabinet {
+  id: string;
+  roomId: string;
+  item: ItemType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface ClinicDecoration {
@@ -25,6 +36,7 @@ export interface ClinicDecoration {
 
 export interface GameplayLayoutExtras {
   counters: CounterSurface[];
+  supplyCabinets: SupplyCabinet[];
   decorations: ClinicDecoration[];
 }
 
@@ -69,6 +81,26 @@ function makeCounter(room: ClinicRoomLayout, index: number, random: () => number
   };
 }
 
+function generateSupplyCabinets(layout: ClinicLayout): SupplyCabinet[] {
+  const room = layout.rooms.find((candidate) => candidate.kind === "storage");
+  if (!room) return [];
+
+  const types: ItemType[] = ["bandage", "sampleKit", "eyeDrops", "treat", "disinfectant"];
+  const padding = 42;
+  const usable = Math.max(1, room.width - padding * 2);
+  const y = room.doorSide === "bottom" ? room.y + 42 : room.y + room.height - 42;
+
+  return types.map((item, index) => ({
+    id: `cabinet-${item}`,
+    roomId: room.id,
+    item,
+    x: Math.round(room.x + padding + (usable * index) / (types.length - 1)),
+    y: Math.round(y),
+    width: 44,
+    height: 48,
+  }));
+}
+
 function decorateRoom(room: ClinicRoomLayout, random: () => number): ClinicDecoration[] {
   const items: ClinicDecoration[] = [];
   const add = (kind: DecorationKind, x: number, y: number, width: number, height: number, blocksMovement = true) => {
@@ -88,7 +120,7 @@ function decorateRoom(room: ClinicRoomLayout, random: () => number): ClinicDecor
   const right = room.x + room.width - 40;
   const farY = farWallY(room);
 
-  if (room.kind === "reception" || room.kind === "waiting") {
+  if (room.kind === "reception" || room.kind === "waiting" || room.kind === "storage") {
     return items;
   }
 
@@ -104,27 +136,16 @@ function decorateRoom(room: ClinicRoomLayout, random: () => number): ClinicDecor
     return items;
   }
 
-  if (room.kind === "storage") {
-    add("cabinet", left, farY, 62, 42, true);
-    add("cabinet", right, farY, 62, 42, true);
-    return items;
-  }
-
   return items;
 }
 
-/**
- * Adds gameplay furniture to the procedural shell while keeping the direct line
- * between each door and the room centre clear. Reception chairs are no longer
- * decorative noise: they are generated from the exact patient queue positions.
- */
 export function generateGameplayLayoutExtras(layout: ClinicLayout): GameplayLayoutExtras {
   const random = mulberry32((layout.seed || 1) ^ 0x51f15e);
   const counters: CounterSurface[] = [];
   const decorations: ClinicDecoration[] = [];
 
   for (const room of layout.rooms) {
-    if (room.kind === "storage" || room.kind === "analyzer" || room.kind === "treatment") {
+    if (room.kind === "analyzer" || room.kind === "treatment") {
       counters.push(makeCounter(room, counters.length, random));
     }
     decorations.push(...decorateRoom(room, random));
@@ -146,7 +167,7 @@ export function generateGameplayLayoutExtras(layout: ClinicLayout): GameplayLayo
     });
   }
 
-  return { counters, decorations };
+  return { counters, supplyCabinets: generateSupplyCabinets(layout), decorations };
 }
 
 function pointInsideRoom(point: Point, room: ClinicRoomLayout, margin = 2): boolean {
@@ -173,12 +194,6 @@ function insideDoorPoint(room: ClinicRoomLayout): Point {
   };
 }
 
-/**
- * Produces a short deterministic route through the shared corridor. It is not a
- * general navmesh: the procedural generator deliberately guarantees that every
- * gameplay room opens directly onto this corridor, so two door waypoints are
- * sufficient and considerably more predictable for family-friendly movement.
- */
 export function routeThroughClinic(layout: ClinicLayout, from: Point, target: Point): Point[] {
   const sourceRoom = layout.rooms.find((room) => pointInsideRoom(from, room));
   const targetRoom = layout.rooms.find((room) => pointInsideRoom(target, room));
