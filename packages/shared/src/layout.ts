@@ -49,7 +49,7 @@ export interface ClinicLayout {
 
 const ROOM_LABELS: Record<ClinicRoomKind, string> = {
   waiting: "POCZEKALNIA",
-  reception: "RECEPCJA",
+  reception: "RECEPCJA + POCZEKALNIA",
   storage: "MAGAZYN",
   analyzer: "DIAGNOSTYKA",
   treatment: "GABINET",
@@ -89,38 +89,23 @@ function splitColumns(random: () => number, left: number, right: number): number
   return [left, Math.round(first), Math.round(second), right];
 }
 
-/**
- * Reception and waiting room are a functional pair. They always occupy two
- * neighbouring cells in the same row, while the remaining four room types are
- * still shuffled. This preserves procedural variety without making intake feel
- * randomly disconnected from the waiting area.
- */
-function generateRoomKinds(random: () => number): ClinicRoomKind[] {
-  const slots = new Array<ClinicRoomKind | undefined>(6).fill(undefined);
-  const row = random() < 0.5 ? 0 : 1;
-  const firstColumn = random() < 0.5 ? 0 : 1;
-  const waitingFirst = random() < 0.5;
-  const first = row * 3 + firstColumn;
-  const second = first + 1;
-  slots[first] = waitingFirst ? "waiting" : "reception";
-  slots[second] = waitingFirst ? "reception" : "waiting";
-
-  const remaining = shuffle<ClinicRoomKind>(["storage", "analyzer", "treatment", "treatment"], random);
-  let next = 0;
-  for (let index = 0; index < slots.length; index += 1) {
-    if (!slots[index]) slots[index] = remaining[next++];
-  }
-  return slots as ClinicRoomKind[];
-}
-
 function roomStation(room: ClinicRoomLayout, treatmentIndex: number): StationState | undefined {
   const cx = Math.round(room.x + room.width / 2);
-  const awayFromDoor = room.doorSide === "bottom" ? room.y + room.height * 0.42 : room.y + room.height * 0.58;
+  const awayFromDoor = room.doorSide === "bottom" ? room.y + room.height * 0.43 : room.y + room.height * 0.57;
   const cy = Math.round(awayFromDoor);
 
   if (room.kind === "waiting") return undefined;
   if (room.kind === "reception") {
-    return { id: "reception", kind: "reception", label: "RECEPCJA", x: cx, y: cy, width: 150, height: 58, status: "available" };
+    return {
+      id: "reception",
+      kind: "reception",
+      label: "RECEPCJA",
+      x: cx,
+      y: cy,
+      width: 150,
+      height: 58,
+      status: "available",
+    };
   }
   if (room.kind === "storage") {
     return {
@@ -188,29 +173,42 @@ function buildRoomWalls(room: ClinicRoomLayout, wall = 12, doorWidth = 78): Wall
   return walls.filter((segment) => segment.width > 2 && segment.height > 2);
 }
 
-function safeSupplySpawns(storageRoom: ClinicRoomLayout): ItemSpawnPoint[] {
-  const itemTypes: ItemType[] = ["bandage", "sampleKit", "eyeDrops", "treat", "disinfectant"];
-  const paddingX = 72;
-  const usableWidth = Math.max(1, storageRoom.width - paddingX * 2);
-  // Supplies live in the near-door band, deliberately far away from the central
-  // supply table. The scene creates two visual copies around each point, so keep
-  // enough inset for those offsets too.
-  const y = storageRoom.doorSide === "bottom"
-    ? storageRoom.y + storageRoom.height - 58
-    : storageRoom.y + 58;
-
-  return itemTypes.map((item, index) => ({
-    id: `${item}-${index}`,
-    item,
-    x: Math.round(storageRoom.x + paddingX + usableWidth * (index / (itemTypes.length - 1))),
+function receptionSeatPositions(room: ClinicRoomLayout): Point[] {
+  const y = room.doorSide === "bottom" ? room.y + 61 : room.y + room.height - 61;
+  const usable = Math.max(156, room.width - 124);
+  return [0, 1, 2].map((index) => ({
+    x: Math.round(room.x + 62 + (usable * index) / 2),
     y: Math.round(y),
   }));
 }
 
+function safeStorageSpawns(room: ClinicRoomLayout): ItemSpawnPoint[] {
+  const itemTypes: ItemType[] = ["bandage", "sampleKit", "eyeDrops", "treat", "disinfectant"];
+  const direction = room.doorSide === "bottom" ? -1 : 1;
+  const baseY = room.doorY + direction * 62;
+  const secondY = room.doorY + direction * 110;
+  const left = room.x + 54;
+  const right = room.x + room.width - 54;
+  const width = Math.max(1, right - left);
+
+  return itemTypes.map((item, index) => {
+    const row = index >= 3 ? 1 : 0;
+    const rowIndex = row === 0 ? index : index - 3;
+    const rowCount = row === 0 ? 3 : 2;
+    const t = rowCount === 1 ? 0.5 : rowIndex / (rowCount - 1);
+    return {
+      id: `${item}-${index}`,
+      item,
+      x: Math.round(left + width * t),
+      y: Math.round(row === 0 ? baseY : secondY),
+    };
+  });
+}
+
 /**
  * Builds a deterministic six-room clinic around one central corridor.
- * Room widths and door positions vary by seed. Waiting + reception are always
- * adjacent, and all critical gameplay stations remain reachable.
+ * Reception now contains the waiting area. The freed room becomes a third
+ * treatment room, keeping six functional rooms while improving throughput.
  */
 export function generateClinicLayout(seed: number, width = 1280, height = 720): ClinicLayout {
   const random = mulberry32(seed || 1);
@@ -221,7 +219,11 @@ export function generateClinicLayout(seed: number, width = 1280, height = 720): 
   const corridorY = Math.round((hudBottom + bottom) / 2 - corridorHeight / 2 + (random() - 0.5) * 24);
   const corridor = { x: margin, y: corridorY, width: width - margin * 2, height: corridorHeight };
   const columns = splitColumns(random, margin, width - margin);
-  const kinds = generateRoomKinds(random);
+
+  const kinds = shuffle<ClinicRoomKind>(
+    ["reception", "storage", "analyzer", "treatment", "treatment", "treatment"],
+    random,
+  );
 
   const rooms: ClinicRoomLayout[] = [];
   for (let row = 0; row < 2; row += 1) {
@@ -260,14 +262,9 @@ export function generateClinicLayout(seed: number, width = 1280, height = 720): 
   }
 
   const storageRoom = rooms.find((room) => room.kind === "storage")!;
-  const waitingRoom = rooms.find((room) => room.kind === "waiting")!;
   const receptionRoom = rooms.find((room) => room.kind === "reception")!;
-  const itemSpawns = safeSupplySpawns(storageRoom);
-
-  const patientSpawns: Point[] = [0, 1, 2].map((index) => ({
-    x: Math.round(waitingRoom.x + waitingRoom.width * (0.32 + index * 0.18)),
-    y: Math.round(waitingRoom.y + waitingRoom.height * 0.5),
-  }));
+  const itemSpawns = safeStorageSpawns(storageRoom);
+  const patientSpawns = receptionSeatPositions(receptionRoom);
 
   const walls = rooms.flatMap((room) => buildRoomWalls(room));
   const exit = { x: margin + 18, y: Math.round(corridorY + corridorHeight / 2) };
