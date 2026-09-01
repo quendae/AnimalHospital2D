@@ -53,6 +53,32 @@ export const PATIENT_DEFINITIONS: PatientDefinition[] = [
     treatmentStation: "treatment",
     color: 0xb67b4c,
   },
+  {
+    species: "cat",
+    displayName: "Kot mechanik",
+    role: "mechanik",
+    symptoms: ["łzawienie", "podrażnienie", "kontakt z pyłem"],
+    procedure: "sampleAnalysis",
+    requiredItem: "sampleKit",
+    patienceMs: 88_000,
+    priority: "urgent",
+    baseReward: 58,
+    treatmentStation: "analyzer",
+    color: 0x758b86,
+  },
+  {
+    species: "rabbit",
+    displayName: "Królik kurier",
+    role: "kurier",
+    symptoms: ["otarcie łapy", "drobne krwawienie", "zmęczenie"],
+    procedure: "bandage",
+    requiredItem: "bandage",
+    patienceMs: 72_000,
+    priority: "normal",
+    baseReward: 46,
+    treatmentStation: "treatment",
+    color: 0xcfae8f,
+  },
 ];
 
 export const MVP_STATIONS: StationState[] = [
