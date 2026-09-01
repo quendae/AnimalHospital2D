@@ -1,0 +1,68 @@
+import { describe, expect, it } from "vitest";
+import {
+  MVP_STATIONS,
+  PATIENT_DEFINITIONS,
+  admitPatient,
+  assignPatientToStation,
+  beginShift,
+  completeTreatment,
+  createPatient,
+  createShiftState,
+  deliverRequiredItem,
+  enqueuePatient,
+  starRating,
+  tickShift,
+} from "./index";
+
+describe("clinic domain", () => {
+  it("admits a queued patient without duplicating it", () => {
+    let state = beginShift(createShiftState(MVP_STATIONS));
+    const patient = createPatient(PATIENT_DEFINITIONS[0], 1);
+    state = enqueuePatient(state, patient);
+    state = admitPatient(state, patient.id);
+
+    expect(state.queue).toHaveLength(0);
+    expect(state.activePatients).toHaveLength(1);
+    expect(state.activePatients[0].state).toBe("admitted");
+  });
+
+  it("requires the correct item before a procedure", () => {
+    let state = beginShift(createShiftState(MVP_STATIONS));
+    const patient = createPatient(PATIENT_DEFINITIONS[0], 1);
+    state = enqueuePatient(state, patient);
+    state = admitPatient(state, patient.id);
+    state = assignPatientToStation(state, patient.id, "treatment-a");
+
+    const mistakeState = deliverRequiredItem(state, patient.id, "eyeDrops");
+    expect(mistakeState.score.mistakes).toBe(1);
+
+    const readyState = deliverRequiredItem(state, patient.id, "bandage");
+    expect(readyState.stations.find((station) => station.id === "treatment-a")?.status).toBe("procedure");
+  });
+
+  it("scores a successful treatment and dirties the station", () => {
+    let state = beginShift(createShiftState(MVP_STATIONS));
+    const patient = createPatient(PATIENT_DEFINITIONS[2], 1);
+    state = enqueuePatient(state, patient);
+    state = admitPatient(state, patient.id);
+    state = assignPatientToStation(state, patient.id, "analyzer");
+    state = deliverRequiredItem(state, patient.id, "sampleKit");
+    state = completeTreatment(state, patient.id, { quality: "perfect", accuracy: 0.98, durationMs: 5400 });
+
+    expect(state.completedPatients).toHaveLength(1);
+    expect(state.score.treated).toBe(1);
+    expect(state.score.coins).toBeGreaterThan(0);
+    expect(state.stations.find((station) => station.id === "analyzer")?.status).toBe("dirty");
+  });
+
+  it("ends the shift when the timer expires", () => {
+    let state = beginShift(createShiftState(MVP_STATIONS, 1000));
+    state = tickShift(state, 1001);
+    expect(state.phase).toBe("results");
+    expect(state.remainingMs).toBe(0);
+  });
+
+  it("never awards more than three stars", () => {
+    expect(starRating({ care: 5000, tempo: 5000, safety: 100, cooperation: 5000, coins: 1000, treated: 20, mistakes: 0 })).toBe(3);
+  });
+});
