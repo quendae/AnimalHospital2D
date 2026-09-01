@@ -10,6 +10,7 @@ import {
   createShiftState,
   deliverRequiredItem,
   enqueuePatient,
+  generateClinicLayout,
   starRating,
   tickShift,
 } from "./index";
@@ -64,5 +65,33 @@ describe("clinic domain", () => {
 
   it("never awards more than three stars", () => {
     expect(starRating({ care: 5000, tempo: 5000, safety: 100, cooperation: 5000, coins: 1000, treated: 20, mistakes: 0 })).toBe(3);
+  });
+});
+
+describe("procedural clinic layout", () => {
+  it("is deterministic for a seed and changes for another seed", () => {
+    const first = generateClinicLayout(12345);
+    const same = generateClinicLayout(12345);
+    const different = generateClinicLayout(98765);
+
+    expect(first).toEqual(same);
+    expect(first.rooms.map((room) => room.kind)).not.toEqual(different.rooms.map((room) => room.kind));
+  });
+
+  it("always generates the required functional rooms and stations", () => {
+    for (const seed of [1, 2, 3, 111, 999999]) {
+      const layout = generateClinicLayout(seed);
+      const roomKinds = layout.rooms.map((room) => room.kind);
+      const stationKinds = layout.stations.map((station) => station.kind);
+
+      expect(layout.rooms).toHaveLength(6);
+      expect(roomKinds.filter((kind) => kind === "treatment")).toHaveLength(2);
+      expect(roomKinds).toEqual(expect.arrayContaining(["waiting", "reception", "storage", "analyzer"]));
+      expect(stationKinds.filter((kind) => kind === "treatment")).toHaveLength(2);
+      expect(stationKinds).toEqual(expect.arrayContaining(["reception", "storage", "analyzer"]));
+      expect(layout.itemSpawns).toHaveLength(5);
+      expect(layout.patientSpawns).toHaveLength(3);
+      expect(layout.walls.length).toBeGreaterThan(20);
+    }
   });
 });
