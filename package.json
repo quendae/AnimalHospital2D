@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
+    "start": "node scripts/start.mjs",
     "predev": "npm run build --workspace @animal-care/shared",
     "dev": "npm run dev --workspace @animal-care/client",
     "predev:server": "npm run build --workspace @animal-care/shared",
