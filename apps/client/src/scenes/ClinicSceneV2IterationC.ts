@@ -8,6 +8,9 @@ import { ClinicSceneV2 } from "./ClinicSceneV2";
 
 const WORLD_WIDTH = 1280;
 const WORLD_HEIGHT = 720;
+const SPILL_CLEAN_MS = 1500;
+
+type TrailPoint = { x: number; y: number; at: number; patientId: string };
 
 type SpillRuntime = {
   id: string;
@@ -15,8 +18,11 @@ type SpillRuntime = {
   y: number;
   node: Phaser.GameObjects.Ellipse;
   label: Phaser.GameObjects.Text;
+  progressBg: Phaser.GameObjects.Rectangle;
+  progressFill: Phaser.GameObjects.Rectangle;
   age: number;
   stressTicks: number;
+  cleanMs: number;
 };
 
 function fitWorldCamera(scene: any, width?: number, height?: number): void {
@@ -94,21 +100,58 @@ function moveAdmittedPatientOffSeat(scene: any, runtime: any): void {
   scene.movePatient(runtime, holdingPoint, "handoff");
 }
 
-function spawnSpill(scene: any): void {
-  const spills = scene.__maintenanceSpills as SpillRuntime[];
-  if (!spills || spills.length >= 2) return;
-
+function recordPatientTrail(scene: any): void {
+  const now = scene.time.now;
   const corridor = scene.layout.corridor;
-  const span = Math.max(120, corridor.width - 220);
-  const index = scene.__spillSequence ?? 0;
-  const seedOffset = ((scene.seed * 97 + index * 211) % 997) / 997;
-  const x = corridor.x + 110 + seedOffset * span;
-  const y = corridor.y + corridor.height / 2 + (index % 2 === 0 ? -18 : 18);
+  const points = scene.__patientTrailPoints as TrailPoint[];
 
-  const node = scene.add.ellipse(x, y, 66, 30, 0x72a9a2, 0.38)
-    .setStrokeStyle(2, 0x4c7d79, 0.7)
+  for (const runtime of scene.patients?.values?.() ?? []) {
+    if (runtime.phase !== "moving" && runtime.phase !== "leaving") continue;
+    const x = runtime.view.container.x;
+    const y = runtime.view.container.y;
+    const insideCorridor =
+      x > corridor.x + 42 &&
+      x < corridor.x + corridor.width - 42 &&
+      y > corridor.y + 14 &&
+      y < corridor.y + corridor.height - 14;
+    if (!insideCorridor) continue;
+    if (now - (runtime.__lastTrailSampleAt ?? 0) < 280) continue;
+
+    runtime.__lastTrailSampleAt = now;
+    const last = points.at(-1);
+    if (!last || Phaser.Math.Distance.Between(last.x, last.y, x, y) > 28 || last.patientId !== runtime.patient.id) {
+      points.push({ x, y, at: now, patientId: runtime.patient.id });
+    }
+  }
+
+  if (points.length > 120) points.splice(0, points.length - 120);
+}
+
+function chooseTrailPoint(scene: any): TrailPoint | undefined {
+  const spills = scene.__maintenanceSpills as SpillRuntime[];
+  const points = (scene.__patientTrailPoints as TrailPoint[]).filter((point) => {
+    if (scene.time.now - point.at > 70_000) return false;
+    if (Phaser.Math.Distance.Between(scene.player.x, scene.player.y, point.x, point.y) < 90) return false;
+    return spills.every((spill) => Phaser.Math.Distance.Between(spill.x, spill.y, point.x, point.y) > 105);
+  });
+  if (!points.length) return undefined;
+
+  const sequence = scene.__spillSequence ?? 0;
+  const index = Math.abs((scene.seed * 31 + sequence * 47) % points.length);
+  return points[index];
+}
+
+function spawnSpill(scene: any): boolean {
+  const spills = scene.__maintenanceSpills as SpillRuntime[];
+  if (!spills || spills.length >= 2) return false;
+  const point = chooseTrailPoint(scene);
+  if (!point) return false;
+
+  const index = scene.__spillSequence ?? 0;
+  const node = scene.add.ellipse(point.x, point.y, 66, 30, 0x72a9a2, 0.4)
+    .setStrokeStyle(2, 0x4c7d79, 0.72)
     .setDepth(7);
-  const label = scene.add.text(x, y - 24, "ROZLANE", {
+  const label = scene.add.text(point.x, point.y - 24, "ROZLANE", {
     fontFamily: "Nunito, Segoe UI, Arial, sans-serif",
     fontSize: "9px",
     fontStyle: "normal",
@@ -121,9 +164,31 @@ function spawnSpill(scene: any): void {
     .setDepth(8);
   label.setResolution?.(Math.min(4, Math.max(2, window.devicePixelRatio || 1)));
 
-  spills.push({ id: `spill-${index}`, x, y, node, label, age: 0, stressTicks: 0 });
+  const progressBg = scene.add.rectangle(point.x - 30, point.y + 27, 60, 7, 0x325452, 0.8)
+    .setOrigin(0, 0.5)
+    .setDepth(10)
+    .setVisible(false);
+  const progressFill = scene.add.rectangle(point.x - 29, point.y + 27, 58, 5, 0xa9dfc8, 1)
+    .setOrigin(0, 0.5)
+    .setDepth(11)
+    .setScale(0, 1)
+    .setVisible(false);
+
+  spills.push({
+    id: `spill-${index}`,
+    x: point.x,
+    y: point.y,
+    node,
+    label,
+    progressBg,
+    progressFill,
+    age: 0,
+    stressTicks: 0,
+    cleanMs: 0,
+  });
   scene.__spillSequence = index + 1;
-  scene.toast("Rozlany płyn w korytarzu — zignorowany podnosi stres kliniki.", 0x5b8885);
+  scene.toast("Pacjent zostawił mokry ślad na swojej trasie — przytrzymaj E, żeby wytrzeć.", 0x5b8885);
+  return true;
 }
 
 function nearestSpill(scene: any, maxDistance = 78): SpillRuntime | undefined {
@@ -139,13 +204,39 @@ function nearestSpill(scene: any, maxDistance = 78): SpillRuntime | undefined {
   return best;
 }
 
-function cleanSpill(scene: any, spill: SpillRuntime): void {
+function removeSpill(scene: any, spill: SpillRuntime): void {
   scene.__maintenanceSpills = (scene.__maintenanceSpills as SpillRuntime[]).filter((entry) => entry !== spill);
   spill.node.destroy();
   spill.label.destroy();
-  scene.consumeCarriedItem();
+  spill.progressBg.destroy();
+  spill.progressFill.destroy();
   scene.clinicStress = Math.max(0, scene.clinicStress - 4);
-  scene.toast("Podłoga wyczyszczona — przepływ wraca do normy.");
+  scene.toast("Podłoga wytarta — przejście jest znowu bezpieczne.");
+}
+
+function updateSpillCleaning(scene: any, delta: number): void {
+  const active = nearestSpill(scene);
+  for (const spill of scene.__maintenanceSpills as SpillRuntime[]) {
+    const selected = spill === active;
+    spill.progressBg.setVisible(selected);
+    spill.progressFill.setVisible(selected);
+
+    if (!selected) {
+      spill.cleanMs = 0;
+      spill.progressFill.setScale(0, 1);
+      continue;
+    }
+
+    if (scene.interactKey?.isDown) spill.cleanMs += delta;
+    else spill.cleanMs = 0;
+
+    const progress = Phaser.Math.Clamp(spill.cleanMs / SPILL_CLEAN_MS, 0, 1);
+    spill.progressFill.setScale(progress, 1);
+    if (progress >= 1) {
+      removeSpill(scene, spill);
+      break;
+    }
+  }
 }
 
 function updateMaintenance(scene: any, delta: number): void {
@@ -153,22 +244,22 @@ function updateMaintenance(scene: any, delta: number): void {
   const spills = scene.__maintenanceSpills as SpillRuntime[];
 
   if (scene.elapsedMs >= scene.__nextSpillAt && spills.length < 2) {
-    spawnSpill(scene);
-    scene.__nextSpillAt += 42_000;
+    scene.__nextSpillAt += spawnSpill(scene) ? 42_000 : 5_000;
   }
 
   for (const spill of spills) {
     spill.age += delta;
-    const ticks = Math.floor(spill.age / 7_000);
+    const ticks = Math.floor(spill.age / 8_000);
     if (ticks > spill.stressTicks) {
       scene.clinicStress = Math.min(100, scene.clinicStress + (ticks - spill.stressTicks));
       spill.stressTicks = ticks;
     }
   }
 
-  const hazard = nearestSpill(scene, 48);
+  const hazard = nearestSpill(scene, 46);
   const body = scene.player?.body as Phaser.Physics.Arcade.Body | undefined;
-  if (hazard && body) body.velocity.scale(0.68);
+  if (hazard && body) body.velocity.scale(0.7);
+  updateSpillCleaning(scene, delta);
 }
 
 function updateMaintenanceHighlight(scene: any): void {
@@ -181,11 +272,6 @@ function updateMaintenanceHighlight(scene: any): void {
   graphics.strokeEllipse(spill.x, spill.y, 78, 40);
 }
 
-/**
- * Iteration C: true renderer resize/camera fit, integrated reception seating and
- * the first environmental maintenance event. It stays as a thin behaviour layer
- * while the prototype is being split into smaller systems.
- */
 export function installClinicSceneV2IterationC(): void {
   const prototype = ClinicSceneV2.prototype as any;
   if (prototype.__iterationCInstalled) return;
@@ -194,6 +280,7 @@ export function installClinicSceneV2IterationC(): void {
   prototype.create = function iterationCCreate(this: any, ...args: any[]) {
     const result = originalCreate.apply(this, args);
     this.__maintenanceSpills = [];
+    this.__patientTrailPoints = [];
     this.__spillSequence = 0;
     this.__nextSpillAt = 28_000;
     this.__maintenanceHighlight = this.add.graphics().setDepth(96);
@@ -229,6 +316,7 @@ export function installClinicSceneV2IterationC(): void {
   prototype.update = function iterationCUpdate(this: any, time: number, delta: number) {
     const result = originalUpdate.call(this, time, delta);
     seatWaitingPatients(this);
+    recordPatientTrail(this);
     updateMaintenance(this, delta);
     updateMaintenanceHighlight(this);
     return result;
@@ -236,17 +324,7 @@ export function installClinicSceneV2IterationC(): void {
 
   const originalHandleInteraction = prototype.handleInteraction;
   prototype.handleInteraction = function iterationCInteraction(this: any) {
-    const spill = nearestSpill(this);
-    if (spill) {
-      if (this.carriedItem?.type === "disinfectant") {
-        cleanSpill(this, spill);
-        return;
-      }
-      if (!this.carriedItem) {
-        this.toast("Rozlany płyn — przynieś środek do dezynfekcji.", 0x6d7775);
-        return;
-      }
-    }
+    if (nearestSpill(this)) return;
     return originalHandleInteraction.call(this);
   };
 
@@ -255,17 +333,14 @@ export function installClinicSceneV2IterationC(): void {
     originalUpdateHint.call(this);
     const spill = nearestSpill(this);
     if (!spill) return;
-    this.hintText.setText(
-      this.carriedItem?.type === "disinfectant"
-        ? "E — wyczyść rozlany płyn"
-        : "Rozlany płyn • potrzebny środek do dezynfekcji",
-    );
+    const percent = Math.round(Phaser.Math.Clamp(spill.cleanMs / SPILL_CLEAN_MS, 0, 1) * 100);
+    this.hintText.setText(`Przytrzymaj E — wytrzyj podłogę ${percent}%`);
   };
 
   const originalPing = prototype.pingPriorityTask;
   prototype.pingPriorityTask = function iterationCPing(this: any) {
     if ((this.__maintenanceSpills?.length ?? 0) > 0) {
-      this.toast("Priorytet środowiskowy: usuń rozlany płyn z korytarza.");
+      this.toast("Priorytet środowiskowy: wytrzyj mokry ślad na trasie pacjentów.");
       return;
     }
     return originalPing.call(this);
