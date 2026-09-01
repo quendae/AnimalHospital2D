@@ -298,6 +298,13 @@ export function tickShift(state: ShiftState, deltaMs: number): ShiftState {
 
   const queue = state.queue.map(tickPatient).filter((patient) => patient.state !== "left");
   const activePatients = state.activePatients.map(tickPatient).filter((patient) => patient.state !== "left");
+  const activeIds = new Set(activePatients.map((patient) => patient.id));
+  const stations = state.stations.map((station) => {
+    if (station.patientId && !activeIds.has(station.patientId)) {
+      return { ...station, status: "dirty" as const, patientId: undefined };
+    }
+    return station;
+  });
   const remainingMs = Math.max(0, state.remainingMs - deltaMs);
   const phase: ShiftPhase = remainingMs === 0 ? "results" : "active";
 
@@ -305,6 +312,7 @@ export function tickShift(state: ShiftState, deltaMs: number): ShiftState {
     ...state,
     queue,
     activePatients,
+    stations,
     clinicStress,
     score,
     remainingMs,
