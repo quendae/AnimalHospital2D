@@ -195,7 +195,7 @@ function safeStorageSpawns(room: ClinicRoomLayout): ItemSpawnPoint[] {
     const row = index >= 3 ? 1 : 0;
     const rowIndex = row === 0 ? index : index - 3;
     const rowCount = row === 0 ? 3 : 2;
-    const t = rowCount === 1 ? 0.5 : rowIndex / (rowCount - 1);
+    const t = rowIndex / (rowCount - 1);
     return {
       id: `${item}-${index}`,
       item,
