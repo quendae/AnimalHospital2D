@@ -15,11 +15,25 @@ describe("gameplay layout extras", () => {
     }
   });
 
+  it("creates one physical reception chair for every queue seat", () => {
+    for (const seed of [1, 42, 99, 6226743]) {
+      const layout = generateClinicLayout(seed);
+      const extras = generateGameplayLayoutExtras(layout);
+      const reception = layout.rooms.find((room) => room.kind === "reception")!;
+      const chairs = extras.decorations.filter((entry) => entry.roomId === reception.id && entry.kind === "chair");
+
+      expect(chairs).toHaveLength(layout.patientSpawns.length);
+      for (const seat of layout.patientSpawns) {
+        expect(chairs.some((chair) => chair.x === seat.x && chair.y === seat.y)).toBe(true);
+      }
+    }
+  });
+
   it("keeps decorative furniture away from the central door lane", () => {
     const layout = generateClinicLayout(42);
     const extras = generateGameplayLayoutExtras(layout);
 
-    for (const decoration of extras.decorations) {
+    for (const decoration of extras.decorations.filter((entry) => entry.kind !== "chair")) {
       const room = layout.rooms.find((candidate) => candidate.id === decoration.roomId)!;
       const halfWidth = decoration.width / 2;
       const overlapsDoorLane =
@@ -30,11 +44,10 @@ describe("gameplay layout extras", () => {
     }
   });
 
-  it("routes patients through room doors and the shared corridor", () => {
+  it("routes seated reception patients through the shared corridor to treatment", () => {
     const layout = generateClinicLayout(99);
-    const waiting = layout.rooms.find((room) => room.kind === "waiting")!;
     const treatment = layout.rooms.find((room) => room.kind === "treatment")!;
-    const from = { x: waiting.x + waiting.width / 2, y: waiting.y + waiting.height / 2 };
+    const from = layout.patientSpawns[0];
     const target = { x: treatment.x + treatment.width / 2, y: treatment.y + treatment.height / 2 };
     const route = routeThroughClinic(layout, from, target);
 
