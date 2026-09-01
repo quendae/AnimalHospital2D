@@ -1,6 +1,9 @@
 import Phaser from "phaser";
 import "./styles.css";
 import { ClinicSceneV2 } from "./scenes/ClinicSceneV2";
+import { installClinicSceneV2Guards } from "./scenes/ClinicSceneV2Guard";
+
+installClinicSceneV2Guards();
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
