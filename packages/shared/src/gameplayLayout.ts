@@ -88,14 +88,7 @@ function decorateRoom(room: ClinicRoomLayout, random: () => number): ClinicDecor
   const right = room.x + room.width - 40;
   const farY = farWallY(room);
 
-  if (room.kind === "reception") {
-    // Chairs are added from layout.patientSpawns so each visible chair maps 1:1
-    // to a real queue seat. Keep only a little non-blocking ambience here.
-    add("plant", random() < 0.5 ? left : right, farY, 30, 30, true);
-    return items;
-  }
-
-  if (room.kind === "waiting") {
+  if (room.kind === "reception" || room.kind === "waiting") {
     return items;
   }
 
