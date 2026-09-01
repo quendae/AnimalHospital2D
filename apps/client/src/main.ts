@@ -4,19 +4,18 @@ import { ClinicSceneV2 } from "./scenes/ClinicSceneV2";
 import { installClinicSceneV2Guards } from "./scenes/ClinicSceneV2Guard";
 import { installClinicSceneV2IterationB } from "./scenes/ClinicSceneV2IterationB";
 import { installClinicSceneV2IterationC } from "./scenes/ClinicSceneV2IterationC";
+import { installClinicSceneV2IterationD } from "./scenes/ClinicSceneV2IterationD";
 
 installClinicSceneV2Guards();
 installClinicSceneV2IterationB();
 installClinicSceneV2IterationC();
-
-const renderResolution = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
+installClinicSceneV2IterationD();
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: "game",
   width: 1280,
   height: 720,
-  resolution: renderResolution,
   backgroundColor: "#f2eadb",
   pixelArt: false,
   antialias: true,
