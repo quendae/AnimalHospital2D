@@ -16,11 +16,11 @@ const CLINIC_BOUNDS = {
   bottom: 688,
 };
 
-export class ClinicRoom extends Room<ClinicRoomState> {
+export class ClinicRoom extends Room {
+  state = new ClinicRoomState();
   maxClients = 4;
 
   onCreate(): void {
-    this.setState(new ClinicRoomState());
     this.setPatchRate(50);
     this.setSimulationInterval((deltaMs) => this.simulate(deltaMs), 50);
 
@@ -63,22 +63,24 @@ export class ClinicRoom extends Room<ClinicRoomState> {
     this.state.players.set(client.sessionId, player);
   }
 
-  onLeave(client: Client, consented: boolean): void {
+  async onDrop(client: Client): Promise<void> {
     const player = this.state.players.get(client.sessionId);
-    if (!player) return;
+    if (player) player.connected = false;
 
-    if (consented) {
-      this.state.players.delete(client.sessionId);
-      return;
+    try {
+      await this.allowReconnection(client, 15);
+    } catch {
+      // Colyseus invokes onLeave after the reconnect window expires.
     }
+  }
 
-    player.connected = false;
-    this.allowReconnection(client, 15).then(() => {
-      const reconnected = this.state.players.get(client.sessionId);
-      if (reconnected) reconnected.connected = true;
-    }).catch(() => {
-      this.state.players.delete(client.sessionId);
-    });
+  onReconnect(client: Client): void {
+    const player = this.state.players.get(client.sessionId);
+    if (player) player.connected = true;
+  }
+
+  onLeave(client: Client, _code?: number): void {
+    this.state.players.delete(client.sessionId);
   }
 
   private simulate(deltaMs: number): void {
