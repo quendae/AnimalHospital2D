@@ -89,6 +89,30 @@ function splitColumns(random: () => number, left: number, right: number): number
   return [left, Math.round(first), Math.round(second), right];
 }
 
+/**
+ * Reception and waiting room are a functional pair. They always occupy two
+ * neighbouring cells in the same row, while the remaining four room types are
+ * still shuffled. This preserves procedural variety without making intake feel
+ * randomly disconnected from the waiting area.
+ */
+function generateRoomKinds(random: () => number): ClinicRoomKind[] {
+  const slots = new Array<ClinicRoomKind | undefined>(6).fill(undefined);
+  const row = random() < 0.5 ? 0 : 1;
+  const firstColumn = random() < 0.5 ? 0 : 1;
+  const waitingFirst = random() < 0.5;
+  const first = row * 3 + firstColumn;
+  const second = first + 1;
+  slots[first] = waitingFirst ? "waiting" : "reception";
+  slots[second] = waitingFirst ? "reception" : "waiting";
+
+  const remaining = shuffle<ClinicRoomKind>(["storage", "analyzer", "treatment", "treatment"], random);
+  let next = 0;
+  for (let index = 0; index < slots.length; index += 1) {
+    if (!slots[index]) slots[index] = remaining[next++];
+  }
+  return slots as ClinicRoomKind[];
+}
+
 function roomStation(room: ClinicRoomLayout, treatmentIndex: number): StationState | undefined {
   const cx = Math.round(room.x + room.width / 2);
   const awayFromDoor = room.doorSide === "bottom" ? room.y + room.height * 0.42 : room.y + room.height * 0.58;
@@ -164,10 +188,29 @@ function buildRoomWalls(room: ClinicRoomLayout, wall = 12, doorWidth = 78): Wall
   return walls.filter((segment) => segment.width > 2 && segment.height > 2);
 }
 
+function safeSupplySpawns(storageRoom: ClinicRoomLayout): ItemSpawnPoint[] {
+  const itemTypes: ItemType[] = ["bandage", "sampleKit", "eyeDrops", "treat", "disinfectant"];
+  const paddingX = 72;
+  const usableWidth = Math.max(1, storageRoom.width - paddingX * 2);
+  // Supplies live in the near-door band, deliberately far away from the central
+  // supply table. The scene creates two visual copies around each point, so keep
+  // enough inset for those offsets too.
+  const y = storageRoom.doorSide === "bottom"
+    ? storageRoom.y + storageRoom.height - 58
+    : storageRoom.y + 58;
+
+  return itemTypes.map((item, index) => ({
+    id: `${item}-${index}`,
+    item,
+    x: Math.round(storageRoom.x + paddingX + usableWidth * (index / (itemTypes.length - 1))),
+    y: Math.round(y),
+  }));
+}
+
 /**
  * Builds a deterministic six-room clinic around one central corridor.
- * Room order, widths, door positions and treatment-room numbering vary by seed,
- * while all critical gameplay stations remain reachable in every layout.
+ * Room widths and door positions vary by seed. Waiting + reception are always
+ * adjacent, and all critical gameplay stations remain reachable.
  */
 export function generateClinicLayout(seed: number, width = 1280, height = 720): ClinicLayout {
   const random = mulberry32(seed || 1);
@@ -178,11 +221,7 @@ export function generateClinicLayout(seed: number, width = 1280, height = 720): 
   const corridorY = Math.round((hudBottom + bottom) / 2 - corridorHeight / 2 + (random() - 0.5) * 24);
   const corridor = { x: margin, y: corridorY, width: width - margin * 2, height: corridorHeight };
   const columns = splitColumns(random, margin, width - margin);
-
-  const kinds = shuffle<ClinicRoomKind>(
-    ["waiting", "reception", "storage", "analyzer", "treatment", "treatment"],
-    random,
-  );
+  const kinds = generateRoomKinds(random);
 
   const rooms: ClinicRoomLayout[] = [];
   for (let row = 0; row < 2; row += 1) {
@@ -223,13 +262,7 @@ export function generateClinicLayout(seed: number, width = 1280, height = 720): 
   const storageRoom = rooms.find((room) => room.kind === "storage")!;
   const waitingRoom = rooms.find((room) => room.kind === "waiting")!;
   const receptionRoom = rooms.find((room) => room.kind === "reception")!;
-  const itemTypes: ItemType[] = ["bandage", "sampleKit", "eyeDrops", "treat", "disinfectant"];
-  const itemSpawns = itemTypes.map((item, index) => ({
-    id: `${item}-${index}`,
-    item,
-    x: Math.round(storageRoom.x + 56 + (index % 3) * Math.min(82, (storageRoom.width - 112) / 2)),
-    y: Math.round(storageRoom.y + 62 + Math.floor(index / 3) * 68),
-  }));
+  const itemSpawns = safeSupplySpawns(storageRoom);
 
   const patientSpawns: Point[] = [0, 1, 2].map((index) => ({
     x: Math.round(waitingRoom.x + waitingRoom.width * (0.32 + index * 0.18)),
