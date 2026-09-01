@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import "./styles.css";
-import { ClinicScene } from "./scenes/ClinicScene";
+import { ClinicSceneV2 } from "./scenes/ClinicSceneV2";
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -21,7 +21,7 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [ClinicScene],
+  scene: [ClinicSceneV2],
 };
 
 new Phaser.Game(config);
