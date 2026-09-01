@@ -2,7 +2,7 @@
 
 A 2D veterinary-clinic time-management prototype built from the project's design document.
 
-The current focus is the **local gameplay loop**. Multiplayer infrastructure remains in the repository, but networking is deliberately paused while the clinic, patients, object handling and moment-to-moment game feel are developed further.
+The current focus is the **local gameplay loop**. Multiplayer infrastructure remains in the repository, but networking is deliberately paused while the clinic, patients, physical object handling and moment-to-moment game feel are developed further.
 
 ## Current playable slice
 
@@ -10,20 +10,28 @@ The current focus is the **local gameplay loop**. Multiplayer infrastructure rem
 - six functional rooms arranged around a central corridor;
 - guaranteed waiting room, reception, storage, diagnostics and two treatment rooms;
 - procedural room order, room widths and door positions;
-- visible walls, doors, counters and room labels;
-- visible dog, cat and rabbit patients physically waiting in the clinic;
-- admitted patients follow the player to their destination and remain visible beside the treatment station;
+- walls, narrow doorways and soft circulation bottlenecks;
+- procedural functional decorations: chairs, plants, cabinets, sinks and bins;
+- decoration placement keeps the critical door-to-workstation route clear;
+- visible dog, cat and rabbit patients;
+- patients now **walk autonomously** between the entrance, waiting room, reception, diagnostics, treatment rooms and exit;
+- patients reserve an available workstation and wait if the next destination is busy;
+- two case-flow archetypes: direct treatment and longer diagnostic chains;
+- diagnostic chain can require reception → analyzer → sample kit → analysis → treatment room → medication/tool → final treatment → exit;
 - physical world items inspired by Overcooked-style handling;
+- two physical copies of each core supply to make staging meaningful;
 - one carried object at a time;
 - items can be picked up, carried above the player, dropped on the floor and picked up again;
-- bandages, sample kits, eye drops, treats and disinfectant are visible objects in the storage room;
-- treatment stations consume the required carried object and restock it after a short delay;
-- dirty treatment stations require physically fetching disinfectant;
+- **limited-capacity staging counters** in work rooms;
+- items can be placed on counters, collected later and transferred between rooms;
+- bandages, sample kits, eye drops, treats and disinfectant are visible objects;
+- treatment stations consume the required carried object and restock supplies after a delay;
+- dirty workstations require physically fetching disinfectant;
 - patient priorities, patience and clinic stress;
-- treatment timing and sample-analysis minigames;
-- coins, score, shift timer and 0–3 star results screen;
+- timing-treatment and sample-analysis minigames;
+- coins, shift timer and 0–3 star results screen;
 - deterministic clinic seeds for reproducing a generated map;
-- renderer-independent domain rules and procedural-layout tests.
+- renderer-independent domain, workflow, route and procedural-layout tests.
 
 ## Stack
 
@@ -52,27 +60,30 @@ To reproduce a particular generated hospital, add a seed to the URL, for example
 ## Controls
 
 - **WASD / Arrow keys** — move
-- **E / Space** — interact / pick up / drop / deliver / start treatment
+- **E / Space** — interact / admit / pick up / place on counter / drop / deliver / start treatment
 - **1–4** — choose a filter during sample analysis
 - **Q** — show the current priority task
 - **R** — after results, generate a fresh clinic and start again
 
 ## Gameplay flow
 
-1. Start the shift. Three patients appear physically in the waiting room.
-2. Go to reception and admit the first patient.
-3. The patient follows you through the clinic.
-4. Bring the patient to the required treatment room or analyzer.
-5. Walk to storage and physically pick up the requested item.
-6. Carry it through the hospital and deliver it to the occupied station.
-7. Complete the treatment minigame.
-8. The recovered patient walks toward the exit.
-9. Fetch disinfectant and clean the dirty station.
-10. Keep the queue moving until the shift ends.
+1. Start the shift. Patients enter the clinic and walk to waiting positions.
+2. Use quiet moments to stage frequently needed supplies on work-room counters.
+3. Go to reception and admit the next waiting patient.
+4. The patient walks automatically to the next required destination.
+5. If a workstation is busy, the patient waits for it to become available.
+6. Read the workstation request, fetch the required physical item and carry it through the clinic.
+7. Use a nearby counter as a buffer when useful, or deliver the item directly.
+8. Complete the treatment/analysis minigame.
+9. A simple case heads toward the exit; a diagnostic case may continue to another room for a second treatment stage.
+10. Fetch disinfectant and clean dirty workstations so the next patient can use them.
+11. Keep the whole clinic flow moving until the shift ends.
 
 ## Procedural clinic generation
 
-The generator lives in `packages/shared/src/layout.ts` and is deterministic by seed. Each generated clinic keeps a safe gameplay contract instead of being unconstrained random noise:
+The base generator lives in `packages/shared/src/layout.ts`. Gameplay furniture and routing helpers live in `packages/shared/src/gameplayLayout.ts`. Both are deterministic by seed.
+
+Each generated clinic keeps a safe gameplay contract instead of being unconstrained random noise:
 
 - exactly six rooms;
 - one central circulation corridor;
@@ -82,23 +93,45 @@ The generator lives in `packages/shared/src/layout.ts` and is deterministic by s
 - one diagnostic room;
 - two treatment rooms;
 - every room has a door into the main corridor;
-- treatment stations and item spawn points are generated from the room layout;
-- the player always starts near reception;
-- the queue always has three valid waiting positions.
+- treatment stations and item spawn points derive from the room layout;
+- staging counters are added to storage, diagnostics and treatment rooms;
+- functional decorations hug side/far walls instead of occupying the direct door lane;
+- patient routes use room-door waypoints and the shared corridor;
+- the player starts near reception;
+- the queue has three valid waiting positions.
 
-This keeps the navigation changing without producing unwinnable layouts.
+This keeps navigation and logistics changing without letting decoration RNG create unwinnable layouts.
+
+## Patient workflows
+
+`packages/shared/src/workflow.ts` contains renderer-independent case pipelines.
+
+**Direct treatment**
+
+```text
+reception → treatment room → requested item → procedure → exit
+```
+
+**Diagnostic case**
+
+```text
+reception → diagnostics → sample kit → sample analysis
+          → treatment room → post-diagnosis item → treatment → exit
+```
+
+The workflow state is intentionally separate from Phaser so future cases can add, remove or reorder stages without turning the rendering scene into the rules engine.
 
 ## Architecture
 
 ```text
 apps/
-  client/   Phaser world, procedural-room rendering, patients, items and minigames
+  client/   Phaser world, procedural-room rendering, autonomous patients, physical objects and minigames
   server/   paused Colyseus multiplayer scaffold
 packages/
-  shared/   patient/shift rules, scoring, config and procedural clinic generator
+  shared/   patient/shift rules, case workflows, procedural layout, furniture generation and route helpers
 ```
 
-The procedural map generator and gameplay rules do not depend on Phaser, so they can be tested independently and later reused by the server if multiplayer work resumes.
+The procedural generators and workflow rules do not depend on Phaser, so they can be tested independently and later reused by the server if multiplayer work resumes.
 
 ## Quality checks
 
@@ -107,8 +140,8 @@ npm test
 npm run build
 ```
 
-GitHub Actions runs domain/layout tests and the full shared/client/server build on pushes and pull requests to `main`.
+GitHub Actions runs shared tests and the full shared/client/server build on pushes and pull requests to `main`.
 
 ## Current direction
 
-Networking is intentionally on hold. The next iterations should continue pushing the local game toward the readable physical-task feel of a co-op kitchen game: better patient movement, stronger object silhouettes, more station types, counters/shelves for placing objects, environmental events, room decorations and more treatment chains before returning to multiplayer.
+Networking remains intentionally on hold. The local game is being pushed toward a readable physical-task flow: autonomous patients, visible work queues, constrained staging space, multi-room treatment chains and a clinic layout whose bottlenecks create decisions rather than arbitrary frustration.
