@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@animal-care/shared": "workspace:*",
+    "@animal-care/shared": "file:../../packages/shared",
     "phaser": "^3.90.0"
   },
   "devDependencies": {
