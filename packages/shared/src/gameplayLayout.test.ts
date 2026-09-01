@@ -2,15 +2,37 @@ import { describe, expect, it } from "vitest";
 import { generateClinicLayout, generateGameplayLayoutExtras, routeThroughClinic } from "./index";
 
 describe("gameplay layout extras", () => {
-  it("adds staging counters to every work room type that needs them", () => {
+  it("adds staging counters to diagnostics and treatment rooms", () => {
     for (const seed of [1, 2, 77, 8123]) {
       const layout = generateClinicLayout(seed);
       const extras = generateGameplayLayoutExtras(layout);
-      const workRooms = layout.rooms.filter((room) => ["storage", "analyzer", "treatment"].includes(room.kind));
+      const workRooms = layout.rooms.filter((room) => ["analyzer", "treatment"].includes(room.kind));
 
       expect(extras.counters).toHaveLength(workRooms.length);
       for (const room of workRooms) {
         expect(extras.counters.some((counter) => counter.roomId === room.id)).toBe(true);
+      }
+      expect(extras.counters.some((counter) => layout.rooms.find((room) => room.id === counter.roomId)?.kind === "storage")).toBe(false);
+    }
+  });
+
+  it("creates one dedicated reachable storage cabinet for every supply type", () => {
+    for (const seed of [1, 42, 99, 6226743]) {
+      const layout = generateClinicLayout(seed);
+      const extras = generateGameplayLayoutExtras(layout);
+      const storage = layout.rooms.find((room) => room.kind === "storage")!;
+      const types = extras.supplyCabinets.map((cabinet) => cabinet.item);
+
+      expect(extras.supplyCabinets).toHaveLength(5);
+      expect(new Set(types).size).toBe(5);
+      expect(types).toEqual(expect.arrayContaining(["bandage", "sampleKit", "eyeDrops", "treat", "disinfectant"]));
+
+      for (const cabinet of extras.supplyCabinets) {
+        expect(cabinet.roomId).toBe(storage.id);
+        expect(cabinet.x - cabinet.width / 2).toBeGreaterThan(storage.x + 8);
+        expect(cabinet.x + cabinet.width / 2).toBeLessThan(storage.x + storage.width - 8);
+        expect(cabinet.y - cabinet.height / 2).toBeGreaterThan(storage.y + 8);
+        expect(cabinet.y + cabinet.height / 2).toBeLessThan(storage.y + storage.height - 8);
       }
     }
   });
