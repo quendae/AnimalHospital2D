@@ -56,6 +56,18 @@ describe("clinic domain", () => {
     expect(state.stations.find((station) => station.id === "analyzer")?.status).toBe("dirty");
   });
 
+  it("dirties and frees a station if its patient loses patience", () => {
+    let state = beginShift(createShiftState(MVP_STATIONS));
+    const patient = { ...createPatient(PATIENT_DEFINITIONS[0], 1), remainingPatienceMs: 10 };
+    state = enqueuePatient(state, patient);
+    state = admitPatient(state, patient.id);
+    state = assignPatientToStation(state, patient.id, "treatment-a");
+    state = tickShift(state, 20);
+
+    expect(state.activePatients).toHaveLength(0);
+    expect(state.stations.find((station) => station.id === "treatment-a")).toMatchObject({ status: "dirty", patientId: undefined });
+  });
+
   it("ends the shift when the timer expires", () => {
     let state = beginShift(createShiftState(MVP_STATIONS, 1000));
     state = tickShift(state, 1001);
