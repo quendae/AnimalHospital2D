@@ -2,8 +2,10 @@ import Phaser from "phaser";
 import "./styles.css";
 import { ClinicSceneV2 } from "./scenes/ClinicSceneV2";
 import { installClinicSceneV2Guards } from "./scenes/ClinicSceneV2Guard";
+import { installClinicSceneV2IterationB } from "./scenes/ClinicSceneV2IterationB";
 
 installClinicSceneV2Guards();
+installClinicSceneV2IterationB();
 
 const renderResolution = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
 
