@@ -8,27 +8,30 @@ The current focus is the **local gameplay loop**. Multiplayer infrastructure rem
 
 - **procedurally generated clinic** on every new run;
 - six functional rooms arranged around a central corridor;
-- reception now includes the **waiting area inside the same room**;
+- reception includes the **waiting area inside the same room**;
 - three physical queue seats are mapped 1:1 to visible chairs;
 - one storage room, one diagnostics room and **three treatment rooms**;
 - procedural room order, room widths and door positions;
 - walls, narrow doorways and soft circulation bottlenecks;
-- procedural functional decorations: chairs, plants, cabinets, sinks and bins;
-- decoration placement keeps critical routes clear;
 - visible dog, cat and rabbit patients;
 - patients walk autonomously between the entrance, their assigned reception seat, diagnostics, treatment rooms and exit;
 - patients reserve a concrete workstation immediately after admission and wait for that specific room if it is unavailable;
+- patients have physical collision blockers, so the player cannot walk through them;
+- patient-to-patient overlap is resolved with soft separation to avoid permanent doorway deadlocks;
 - two case-flow archetypes: direct treatment and longer diagnostic chains;
 - six rotating patient profiles;
 - physical world items inspired by Overcooked-style handling;
-- two physical copies of each core supply to make staging meaningful;
 - one carried object at a time;
 - items can be picked up, carried above the player, dropped on the floor and picked up again;
-- **limited-capacity staging counters** in work rooms;
+- **dedicated supply cabinets** in storage: one cabinet each for bandages, sample kits, eye drops, treats and disinfectant;
+- fresh supplies are taken directly from the matching cabinet instead of spawning loose on the floor;
+- **limited-capacity staging counters** in diagnostics and treatment rooms;
 - items can be placed on counters, collected later and transferred between rooms;
-- treatment stations consume the required carried object and restock supplies after a delay;
-- dirty workstations require physically fetching disinfectant;
-- first environmental maintenance event: **spilled fluid in the corridor** slows movement, increases clinic stress over time and must be cleaned with disinfectant;
+- consumed supplies disappear instead of respawning loose in storage;
+- dirty workstations still require disinfectant;
+- environmental spills are generated from **positions patients actually traversed** in the corridor;
+- walking through a spill slows movement and leaving it unattended raises clinic stress;
+- spills are cleaned by standing nearby and **holding E** until the progress bar reaches 100%;
 - patient priorities, patience and clinic stress;
 - timing-treatment and sample-analysis minigames;
 - coins, shift timer and 0–3 star results screen;
@@ -101,7 +104,8 @@ To reproduce a particular generated hospital, add a seed to the URL, for example
 ## Controls
 
 - **WASD / Arrow keys** — move
-- **E / Space** — interact / admit / pick up / place on counter / drop / deliver / clean / start treatment
+- **E / Space** — interact / admit / take from cabinet / pick up / place on counter / drop / deliver / start treatment
+- **Hold E near a spill** — wipe the floor until the progress bar reaches 100%
 - **1–4** — choose a filter during sample analysis
 - **Q** — show the current priority task
 - **R** — after results, generate a fresh clinic and start again
@@ -109,19 +113,19 @@ To reproduce a particular generated hospital, add a seed to the URL, for example
 ## Gameplay flow
 
 1. Start the shift. Patients enter reception and occupy one of the three physical chairs.
-2. Use quiet moments to stage frequently needed supplies on work-room counters.
+2. Take supplies from their dedicated storage cabinets and stage useful items on work-room counters.
 3. Admit the next seated patient at reception.
 4. The patient is immediately assigned to a concrete analyzer or treatment table and walks there automatically.
 5. If that workstation is unavailable, the patient waits for the assigned room instead of choosing another one silently.
 6. Fetch and physically deliver the required item.
 7. Complete the treatment/analysis minigame.
 8. A simple case heads toward the exit; a diagnostic case may continue to another room for a second stage.
-9. Clean dirty workstations and environmental spills with disinfectant.
+9. Clean dirty workstations with disinfectant. Wipe corridor spills by holding E nearby.
 10. Keep the whole clinic flow moving until the shift ends.
 
 ## Procedural clinic generation
 
-The base generator lives in `packages/shared/src/layout.ts`. Gameplay furniture and routing helpers live in `packages/shared/src/gameplayLayout.ts`. Both are deterministic by seed.
+The base generator lives in `packages/shared/src/layout.ts`. Gameplay furniture, supply-cabinet placement and routing helpers live in `packages/shared/src/gameplayLayout.ts`. Both are deterministic by seed.
 
 Each generated clinic keeps a safe gameplay contract:
 
@@ -132,9 +136,8 @@ Each generated clinic keeps a safe gameplay contract:
 - one diagnostic room;
 - three treatment rooms;
 - every room has a door into the main corridor;
-- treatment stations and item spawn points derive from the room layout;
-- supply spawns remain inside a reachable storage lane away from the supply table;
-- staging counters are added to storage, diagnostics and treatment rooms;
+- five dedicated supply cabinets fit safely inside storage;
+- staging counters are generated in diagnostics and treatment rooms;
 - reception chairs use the exact patient queue positions;
 - patient routes use room-door waypoints and the shared corridor;
 - the player starts near reception.
@@ -143,7 +146,7 @@ This keeps navigation and logistics changing without letting decoration RNG crea
 
 ## Rendering
 
-The client now uses Phaser `RESIZE` mode instead of post-render `FIT` scaling. The canvas is resized to its real parent size and the camera fits the logical 1280×720 clinic to that renderer surface. This avoids CSS stretching of the finished frame and improves sharpness on large desktop displays.
+The client uses Phaser `RESIZE` mode instead of post-render `FIT` scaling. The canvas follows its real CSS parent size and the camera fits the logical 1280×720 clinic to that surface. Global renderer DPR scaling is intentionally avoided here; high-resolution text rendering is handled at the text-object level so the world can fill the viewport without becoming a small sharp image inside a large canvas.
 
 ## Patient workflows
 
@@ -166,10 +169,10 @@ reception → assigned diagnostics → sample kit → sample analysis
 
 ```text
 apps/
-  client/   Phaser world, autonomous patients, physical objects, maintenance events and minigames
+  client/   Phaser world, autonomous patients, physical collisions, cabinets, maintenance events and minigames
   server/   paused Colyseus multiplayer scaffold
 packages/
-  shared/   patient/shift rules, case workflows, procedural layout, furniture generation and route helpers
+  shared/   patient/shift rules, case workflows, procedural layout, furniture/cabinet generation and route helpers
 scripts/
   start.mjs smart local bootstrapper
 start.bat   Windows one-click launcher
@@ -187,4 +190,4 @@ GitHub Actions runs shared tests and the full shared/client/server build on push
 
 ## Current direction
 
-Networking remains intentionally on hold. The local game is being pushed toward a readable physical-task flow: occupied reception seats, concrete room assignments, constrained staging space, multi-room treatment chains, environmental maintenance and procedural bottlenecks that create decisions rather than arbitrary frustration.
+Networking remains intentionally on hold. The local game is being pushed toward a readable physical-task flow: occupied reception seats, concrete room assignments, dedicated supply sources, constrained staging space, physical patient occupancy, multi-room treatment chains and maintenance hazards created by the actual clinic traffic.
