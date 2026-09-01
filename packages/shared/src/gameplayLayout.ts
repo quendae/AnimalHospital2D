@@ -88,15 +88,14 @@ function decorateRoom(room: ClinicRoomLayout, random: () => number): ClinicDecor
   const right = room.x + room.width - 40;
   const farY = farWallY(room);
 
+  if (room.kind === "reception") {
+    // Chairs are added from layout.patientSpawns so each visible chair maps 1:1
+    // to a real queue seat. Keep only a little non-blocking ambience here.
+    add("plant", random() < 0.5 ? left : right, farY, 30, 30, true);
+    return items;
+  }
+
   if (room.kind === "waiting") {
-    const chairY = farY;
-    const available = Math.max(150, room.width - 100);
-    const count = Math.max(2, Math.min(4, Math.floor(available / 78)));
-    for (let i = 0; i < count; i += 1) {
-      const t = count === 1 ? 0.5 : i / (count - 1);
-      add("chair", room.x + 62 + t * (room.width - 124), chairY, 42, 38, true);
-    }
-    add("plant", random() < 0.5 ? left : right, room.doorSide === "bottom" ? room.y + 48 : room.y + room.height - 48, 30, 30, true);
     return items;
   }
 
@@ -118,14 +117,13 @@ function decorateRoom(room: ClinicRoomLayout, random: () => number): ClinicDecor
     return items;
   }
 
-  add("plant", random() < 0.5 ? left : right, farY, 30, 30, true);
   return items;
 }
 
 /**
  * Adds gameplay furniture to the procedural shell while keeping the direct line
- * between each door and the room centre clear. Furniture hugs side/far walls so
- * it enriches the clinic without turning decoration RNG into unwinnable pathing.
+ * between each door and the room centre clear. Reception chairs are no longer
+ * decorative noise: they are generated from the exact patient queue positions.
  */
 export function generateGameplayLayoutExtras(layout: ClinicLayout): GameplayLayoutExtras {
   const random = mulberry32((layout.seed || 1) ^ 0x51f15e);
@@ -137,6 +135,22 @@ export function generateGameplayLayoutExtras(layout: ClinicLayout): GameplayLayo
       counters.push(makeCounter(room, counters.length, random));
     }
     decorations.push(...decorateRoom(room, random));
+  }
+
+  const reception = layout.rooms.find((room) => room.kind === "reception");
+  if (reception) {
+    layout.patientSpawns.forEach((seat, index) => {
+      decorations.push({
+        id: `chair-${reception.id}-seat-${index}`,
+        roomId: reception.id,
+        kind: "chair",
+        x: seat.x,
+        y: seat.y,
+        width: 46,
+        height: 40,
+        blocksMovement: true,
+      });
+    });
   }
 
   return { counters, decorations };
