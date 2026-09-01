@@ -3,9 +3,11 @@ import "./styles.css";
 import { ClinicSceneV2 } from "./scenes/ClinicSceneV2";
 import { installClinicSceneV2Guards } from "./scenes/ClinicSceneV2Guard";
 import { installClinicSceneV2IterationB } from "./scenes/ClinicSceneV2IterationB";
+import { installClinicSceneV2IterationC } from "./scenes/ClinicSceneV2IterationC";
 
 installClinicSceneV2Guards();
 installClinicSceneV2IterationB();
+installClinicSceneV2IterationC();
 
 const renderResolution = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
 
@@ -33,7 +35,7 @@ const config: Phaser.Types.Core.GameConfig = {
     },
   },
   scale: {
-    mode: Phaser.Scale.FIT,
+    mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
   scene: [ClinicSceneV2],
