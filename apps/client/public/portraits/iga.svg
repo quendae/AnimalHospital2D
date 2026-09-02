@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Iga — diagnostyka</title>
+  <desc id="desc">Stylizowany portret Igi w fioletowym fartuchu z motywem mikroskopu.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f3effd"/><stop offset="1" stop-color="#cec5e6"/></linearGradient>
+    <linearGradient id="coat" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#8d7ac0"/><stop offset="1" stop-color="#63538f"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="64" fill="url(#bg)"/>
+  <circle cx="91" cy="100" r="62" fill="#fff" opacity=".35"/>
+  <path d="M76 470c22-109 83-164 180-164 99 0 160 55 181 164" fill="url(#coat)"/>
+  <path d="M178 188c0-82 34-131 82-131 69 0 107 48 107 131v38c0 75-43 125-104 125-59 0-102-49-102-125z" fill="#d8a079"/>
+  <path d="M158 202c-15-100 29-162 105-162 75 0 117 58 104 156-23-47-62-72-116-72-37 0-68 26-93 78z" fill="#2e2736"/>
+  <path d="M180 157c-26 15-41 43-43 75 16-1 30-7 43-18M351 150c28 17 43 45 44 76-16 0-30-6-43-18" fill="#2e2736"/>
+  <ellipse cx="219" cy="221" rx="8" ry="6" fill="#282532"/>
+  <ellipse cx="307" cy="221" rx="8" ry="6" fill="#282532"/>
+  <path d="M241 274c12 10 31 10 44 0" fill="none" stroke="#92584f" stroke-width="6" stroke-linecap="round"/>
+  <path d="M191 198c15-8 32-8 46 0M288 198c15-8 31-8 45 0" fill="none" stroke="#2e2736" stroke-width="8" stroke-linecap="round"/>
+  <path d="M205 352c17 23 34 35 52 35 17 0 35-12 52-35" fill="none" stroke="#eee9fa" stroke-width="10" stroke-linecap="round"/>
+  <g transform="translate(374 381)" fill="none" stroke="#514376" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-28 29h59M-16 29c1-29 14-43 37-47M11-17l-18-24 17-14 19 25zM27-31c13 11 20 24 20 40"/>
+    <path d="M-8 8h34"/>
+  </g>
+  <circle cx="374" cy="381" r="49" fill="none" stroke="#fff" stroke-width="5" opacity=".7"/>
+</svg>
