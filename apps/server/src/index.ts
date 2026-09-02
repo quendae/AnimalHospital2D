@@ -159,6 +159,10 @@ function leaveRoom(socket: WebSocket, immediate = false): void {
   socketContexts.set(socket, {});
   if (!room || !member) return;
 
+  // A resumed session may already point at a newer socket. The close event from
+  // the superseded connection must not mark the freshly resumed member offline.
+  if (member.socket && member.socket !== socket) return;
+
   member.socket = undefined;
   member.connected = false;
 
