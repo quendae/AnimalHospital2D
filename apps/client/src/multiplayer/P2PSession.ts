@@ -20,7 +20,7 @@ export type LobbySnapshot = {
 };
 
 export type GamePacket =
-  | { type: "input"; seq: number; x: number; y: number; interact?: boolean; ping?: boolean }
+  | { type: "input"; seq: number; x: number; y: number; interact?: boolean; interactHeld?: boolean; ping?: boolean; numberChoice?: number }
   | { type: "snapshot"; tick: number; state: unknown }
   | { type: "event"; name: string; payload?: unknown }
   | { type: "hello"; name: string; hero: HeroId };
@@ -35,6 +35,7 @@ type PeerLink = {
   channel?: RTCDataChannel;
   makingOffer: boolean;
   connected: boolean;
+  pendingCandidates: RTCIceCandidateInit[];
 };
 
 const HEROES = new Set<HeroId>(["lena", "maks", "iga", "bruno"]);
@@ -292,6 +293,7 @@ export class P2PSession extends EventTarget {
       pc: new RTCPeerConnection({ iceServers }),
       makingOffer: false,
       connected: false,
+      pendingCandidates: [],
     };
     this.peers.set(peerId, link);
 
@@ -365,6 +367,18 @@ export class P2PSession extends EventTarget {
     }
   }
 
+  private async flushPendingCandidates(link: PeerLink): Promise<void> {
+    if (!link.pc.remoteDescription || link.pendingCandidates.length === 0) return;
+    const candidates = link.pendingCandidates.splice(0);
+    for (const candidate of candidates) {
+      try {
+        await link.pc.addIceCandidate(candidate);
+      } catch (error) {
+        console.debug("Ignoring ICE candidate from a replaced negotiation", error);
+      }
+    }
+  }
+
   private async handleSignal(from: string, payload: SignalPayload): Promise<void> {
     if (!this.room) return;
     const link = this.createPeer(from);
@@ -372,6 +386,7 @@ export class P2PSession extends EventTarget {
     if (payload.description) {
       const description = payload.description;
       await link.pc.setRemoteDescription(description);
+      await this.flushPendingCandidates(link);
       if (description.type === "offer") {
         const answer = await link.pc.createAnswer();
         await link.pc.setLocalDescription(answer);
@@ -380,12 +395,14 @@ export class P2PSession extends EventTarget {
     }
 
     if (payload.candidate) {
+      if (!link.pc.remoteDescription) {
+        link.pendingCandidates.push(payload.candidate);
+        return;
+      }
       try {
         await link.pc.addIceCandidate(payload.candidate);
       } catch (error) {
-        // Candidates racing ahead of a replaced offer are harmless; a fresh
-        // offer is triggered by the host when the connection is failed.
-        console.debug("Ignoring stale ICE candidate", error);
+        console.debug("Ignoring ICE candidate from a replaced negotiation", error);
       }
     }
   }
