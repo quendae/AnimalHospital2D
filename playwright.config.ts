@@ -52,7 +52,7 @@ export default defineConfig({
       stderr: "pipe",
     },
     {
-      command: "npm run dev -- --host 127.0.0.1 --port 5173",
+      command: "npm run dev --workspace @animal-care/client -- --host 127.0.0.1 --port 5173",
       url: "http://127.0.0.1:5173",
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
