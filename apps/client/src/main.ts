@@ -8,6 +8,7 @@ import { installClinicSceneV2IterationD } from "./scenes/ClinicSceneV2IterationD
 import { installClinicSceneV2IterationE } from "./scenes/ClinicSceneV2IterationE";
 import { showLobbyOverlay } from "./multiplayer/LobbyOverlay";
 import { installClinicSceneV2Multiplayer } from "./multiplayer/ClinicP2PBridge";
+import { installClinicSceneV2P2PFixes } from "./multiplayer/ClinicP2PBridgeFixes";
 
 installClinicSceneV2Guards();
 installClinicSceneV2IterationB();
@@ -22,7 +23,10 @@ async function bootstrap(): Promise<void> {
   history.replaceState(null, "", url);
 
   installClinicSceneV2IterationE({ hero: launch.hero, name: launch.name });
-  if (launch.session) installClinicSceneV2Multiplayer(launch.session, { hero: launch.hero, name: launch.name });
+  if (launch.session) {
+    installClinicSceneV2Multiplayer(launch.session, { hero: launch.hero, name: launch.name });
+    installClinicSceneV2P2PFixes();
+  }
 
   const config: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
