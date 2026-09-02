@@ -35,7 +35,8 @@ function drawSupplyCabinets(scene: any): void {
   scene.__supplyCabinets = new Map<string, CabinetRuntime>();
   scene.__dispensedItemSequence = 0;
 
-  for (const cabinet of scene.extras.supplyCabinets ?? []) {
+  const supplyCabinets = (scene.extras.supplyCabinets ?? []) as SupplyCabinet[];
+  for (const cabinet of supplyCabinets) {
     scene.add.rectangle(cabinet.x + 3, cabinet.y + 4, cabinet.width, cabinet.height, 0x263b38, 0.16).setDepth(9);
     const node = scene.add.rectangle(
       cabinet.x,

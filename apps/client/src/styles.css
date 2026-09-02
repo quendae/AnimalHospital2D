@@ -9,6 +9,12 @@
 
 * { box-sizing: border-box; }
 
+button,
+input { font: inherit; }
+
+button { cursor: pointer; }
+button:disabled { cursor: wait; opacity: .55; }
+
 html,
 body,
 #app {
@@ -39,6 +45,7 @@ body {
 }
 
 #game-shell {
+  position: relative;
   width: min(98vw, calc(98vh * 16 / 9));
   width: min(98vw, calc(98dvh * 16 / 9));
   aspect-ratio: 16 / 9;
@@ -60,6 +67,245 @@ body {
   image-rendering: auto;
 }
 
+#multiplayer-lobby {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: clamp(14px, 4vmin, 44px);
+  overflow: auto;
+  background:
+    radial-gradient(circle at 78% 16%, rgba(255, 244, 200, .7), transparent 24%),
+    radial-gradient(circle at 14% 78%, rgba(139, 190, 171, .42), transparent 28%),
+    linear-gradient(145deg, #d7e9df, #afccc3 56%, #88aaa8);
+}
+
+.lobby-card {
+  width: min(760px, 94%);
+  padding: clamp(20px, 4vmin, 42px);
+  border: 3px solid rgba(255,255,255,.75);
+  border-radius: 28px;
+  background: rgba(255, 251, 243, .96);
+  box-shadow: 0 22px 60px rgba(37, 67, 65, .24);
+}
+
+.lobby-brand {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 20px;
+  align-items: center;
+  margin-bottom: 28px;
+}
+
+.lobby-paw {
+  display: grid;
+  width: 74px;
+  height: 74px;
+  place-items: center;
+  border-radius: 24px;
+  background: #397f81;
+  color: white;
+  font-size: 38px;
+  font-weight: 900;
+  box-shadow: 0 7px 0 #286568;
+}
+
+.eyebrow {
+  margin: 0 0 3px;
+  color: #56817c;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .14em;
+}
+
+.lobby-brand h1 {
+  margin: 0;
+  color: #284b50;
+  font-size: clamp(25px, 4vmin, 40px);
+  line-height: 1.02;
+}
+
+.lobby-brand p:last-child {
+  max-width: 570px;
+  margin: 9px 0 0;
+  color: #607774;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.lobby-form label {
+  display: grid;
+  gap: 6px;
+  color: #476461;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.lobby-form input,
+.join-row input {
+  width: 100%;
+  min-height: 46px;
+  border: 2px solid #b9cbc3;
+  border-radius: 12px;
+  outline: 0;
+  background: white;
+  color: #284b50;
+  padding: 10px 13px;
+  font-weight: 900;
+}
+
+.lobby-form input:focus,
+.join-row input:focus {
+  border-color: #4b9391;
+  box-shadow: 0 0 0 4px rgba(75,147,145,.14);
+}
+
+.lobby-actions,
+.join-row,
+.room-footer {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.lobby-actions { margin: 16px 0 12px; }
+
+.lobby-actions button,
+.join-row button,
+.room-footer button,
+.compact {
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: #e3ece7;
+  color: #345653;
+  padding: 9px 17px;
+  font-weight: 900;
+  transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+}
+
+.lobby-actions button:hover,
+.join-row button:hover,
+.room-footer button:hover,
+.compact:hover { transform: translateY(-1px); }
+
+button.primary {
+  background: #3c8f91;
+  color: white;
+  box-shadow: 0 5px 0 #2c6e70;
+}
+
+button.primary:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 #2c6e70;
+}
+
+.join-row input {
+  flex: 1;
+  text-transform: uppercase;
+  letter-spacing: .16em;
+}
+
+.lobby-room {
+  display: grid;
+  gap: 18px;
+}
+
+.room-code-block {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  border-radius: 16px;
+  background: #eaf1ec;
+  padding: 13px 15px;
+}
+
+.room-code-block span {
+  color: #66807a;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.room-code-block strong {
+  color: #284b50;
+  font-size: 26px;
+  letter-spacing: .19em;
+  text-align: center;
+}
+
+.compact { min-height: 34px; padding: 5px 10px; font-size: 11px; }
+
+.member-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.member-list li {
+  display: flex;
+  min-height: 45px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #cedbd5;
+  border-radius: 12px;
+  background: white;
+  padding: 9px 11px;
+}
+
+.member-list li.disconnected { opacity: .52; }
+.member-dot { width: 9px; height: 9px; border-radius: 50%; background: #64a579; }
+.member-list li.disconnected .member-dot { background: #a66e68; }
+.member-list strong { color: #345653; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-list em,
+.member-list small {
+  margin-left: auto;
+  border-radius: 6px;
+  background: #fff0bd;
+  color: #785f20;
+  padding: 2px 5px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 900;
+}
+.member-list small { margin-left: 0; background: #dcebea; color: #386765; }
+
+.room-footer { justify-content: space-between; }
+.transport-pill,
+.network-status {
+  border-radius: 999px;
+  background: #294c50;
+  color: white;
+  padding: 6px 10px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .08em;
+}
+.waiting-host { color: #67807a; font-size: 12px; font-weight: 800; }
+
+.lobby-status {
+  min-height: 20px;
+  margin: 17px 0 0;
+  color: #607774;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.network-status {
+  position: absolute;
+  z-index: 10;
+  right: 10px;
+  bottom: 9px;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(28, 58, 59, .2);
+}
+
 @media (max-width: 900px), (max-height: 620px) {
   #app { padding: 0; }
 
@@ -70,4 +316,31 @@ body {
     border-width: 0;
     box-shadow: none;
   }
+
+  #multiplayer-lobby { padding: 10px; }
+  .lobby-card { width: min(680px, 98%); padding: 18px; border-radius: 18px; }
+  .lobby-brand { grid-template-columns: auto 1fr; gap: 13px; margin-bottom: 16px; }
+  .lobby-paw { width: 54px; height: 54px; border-radius: 16px; font-size: 27px; }
+  .lobby-brand h1 { font-size: clamp(22px, 5.3vmin, 31px); }
+  .lobby-brand p:last-child { margin-top: 5px; font-size: 11px; }
+  .lobby-actions { margin: 10px 0; }
+  .lobby-form input, .join-row input { min-height: 40px; }
+  .lobby-actions button, .join-row button, .room-footer button { min-height: 38px; padding: 7px 12px; }
+}
+
+@media (max-width: 520px) and (orientation: portrait) {
+  #game-shell {
+    width: 100vw;
+    height: 100dvh;
+    aspect-ratio: auto;
+  }
+
+  .lobby-brand { grid-template-columns: 1fr; text-align: center; }
+  .lobby-paw { margin: 0 auto; }
+  .lobby-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .join-row { display: grid; grid-template-columns: 1fr auto; }
+  .member-list { grid-template-columns: 1fr; }
+  .room-code-block { grid-template-columns: 1fr auto; }
+  .room-code-block span { grid-column: 1 / -1; }
+  .room-code-block strong { text-align: left; }
 }

@@ -9,11 +9,10 @@
   },
   "dependencies": {
     "@animal-care/shared": "file:../../packages/shared",
-    "@colyseus/schema": "^5.0.25",
-    "@colyseus/ws-transport": "^0.18.0",
-    "colyseus": "^0.18.5"
+    "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@types/ws": "^8.18.1",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
   }
