@@ -202,10 +202,11 @@ wss.on("connection", (socket) => {
   send(socket, { type: "hello" });
 
   socket.on("message", (raw) => {
-    if (raw.byteLength > 128_000) return;
+    const payload = Array.isArray(raw) ? Buffer.concat(raw).toString() : raw.toString();
+    if (Buffer.byteLength(payload, "utf8") > 128_000) return;
     let message: ClientLobbyMessage;
     try {
-      message = JSON.parse(raw.toString()) as ClientLobbyMessage;
+      message = JSON.parse(payload) as ClientLobbyMessage;
     } catch {
       send(socket, { type: "error", code: "BAD_JSON", message: "Nieprawidłowa wiadomość." });
       return;
