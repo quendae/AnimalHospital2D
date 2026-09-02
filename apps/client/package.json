@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@animal-care/shared": "file:../../packages/shared",
+    "@colyseus/sdk": "^0.18.2",
     "phaser": "^3.90.0"
   },
   "devDependencies": {
