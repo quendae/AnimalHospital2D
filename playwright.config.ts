@@ -1,4 +1,4 @@
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -20,26 +20,26 @@ export default defineConfig({
   projects: [
     {
       name: "desktop-chromium",
-      use: { ...devices["Desktop Chrome"], browserName: "chromium", viewport: { width: 1440, height: 900 } },
+      use: { browserName: "chromium", viewport: { width: 1440, height: 900 } },
     },
     {
       name: "phone-portrait",
-      use: { ...devices["Pixel 7"], browserName: "chromium" },
+      use: { browserName: "chromium", viewport: { width: 412, height: 915 }, isMobile: true, hasTouch: true },
       grep: /@responsive/,
     },
     {
       name: "phone-landscape",
-      use: { ...devices["Pixel 7"], browserName: "chromium", viewport: { width: 915, height: 412 }, isMobile: true, hasTouch: true },
+      use: { browserName: "chromium", viewport: { width: 915, height: 412 }, isMobile: true, hasTouch: true },
       grep: /@responsive/,
     },
     {
       name: "tablet-portrait",
-      use: { ...devices["iPad (gen 7)"], browserName: "chromium" },
+      use: { browserName: "chromium", viewport: { width: 768, height: 1024 }, hasTouch: true },
       grep: /@responsive/,
     },
     {
       name: "tablet-landscape",
-      use: { ...devices["iPad (gen 7) landscape"], browserName: "chromium" },
+      use: { browserName: "chromium", viewport: { width: 1024, height: 768 }, hasTouch: true },
       grep: /@responsive/,
     },
   ],
