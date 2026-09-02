@@ -10,7 +10,9 @@ test("P2P lobby survives a temporary signaling drop", async ({ browser }) => {
     await host.goto("http://127.0.0.1:5173/");
     await host.getByTestId("player-name").fill("Reconnect Host");
     await host.getByTestId("host-room").click();
+    await expect(host.getByTestId("room-code")).not.toHaveText("—", { timeout: 12_000 });
     const roomCode = (await host.getByTestId("room-code").textContent())!.trim();
+    expect(roomCode.length).toBeGreaterThan(1);
 
     await guest.goto("http://127.0.0.1:5173/");
     await guest.getByTestId("player-name").fill("Reconnect Guest");
