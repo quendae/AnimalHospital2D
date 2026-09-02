@@ -9,6 +9,7 @@
     "dev": "npm run dev --workspace @animal-care/client",
     "predev:server": "npm run build --workspace @animal-care/shared",
     "dev:server": "npm run dev --workspace @animal-care/server",
+    "typecheck": "npm run typecheck --workspace @animal-care/client",
     "build": "npm run build --workspace @animal-care/shared && npm run build --workspace @animal-care/client && npm run build --workspace @animal-care/server",
     "test": "npm run test --workspace @animal-care/shared",
     "test:e2e": "playwright test",
