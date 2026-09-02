@@ -12,6 +12,7 @@ export default defineConfig({
     : [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
   use: {
     baseURL: "http://127.0.0.1:5173",
+    browserName: "chromium",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
@@ -19,26 +20,26 @@ export default defineConfig({
   projects: [
     {
       name: "desktop-chromium",
-      use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
+      use: { ...devices["Desktop Chrome"], browserName: "chromium", viewport: { width: 1440, height: 900 } },
     },
     {
       name: "phone-portrait",
-      use: { ...devices["Pixel 7"] },
+      use: { ...devices["Pixel 7"], browserName: "chromium" },
       grep: /@responsive/,
     },
     {
       name: "phone-landscape",
-      use: { ...devices["Pixel 7"], viewport: { width: 915, height: 412 }, isMobile: true, hasTouch: true },
+      use: { ...devices["Pixel 7"], browserName: "chromium", viewport: { width: 915, height: 412 }, isMobile: true, hasTouch: true },
       grep: /@responsive/,
     },
     {
       name: "tablet-portrait",
-      use: { ...devices["iPad (gen 7)"] },
+      use: { ...devices["iPad (gen 7)"], browserName: "chromium" },
       grep: /@responsive/,
     },
     {
       name: "tablet-landscape",
-      use: { ...devices["iPad (gen 7) landscape"] },
+      use: { ...devices["iPad (gen 7) landscape"], browserName: "chromium" },
       grep: /@responsive/,
     },
   ],
