@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="768" height="128" viewBox="0 0 768 128">
+  <defs>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#203b3d" flood-opacity=".22"/></filter>
+  </defs>
+  <!-- Pies listonosz -->
+  <g transform="translate(0 0)" filter="url(#shadow)">
+    <circle cx="64" cy="64" r="58" fill="#f3d7a9"/><circle cx="64" cy="64" r="53" fill="#d9a15d"/>
+    <ellipse cx="35" cy="58" rx="18" ry="30" fill="#a86e3f" transform="rotate(18 35 58)"/><ellipse cx="93" cy="58" rx="18" ry="30" fill="#a86e3f" transform="rotate(-18 93 58)"/>
+    <ellipse cx="64" cy="72" rx="34" ry="31" fill="#e8b977"/><circle cx="52" cy="60" r="5" fill="#253d3f"/><circle cx="78" cy="60" r="5" fill="#253d3f"/><ellipse cx="65" cy="76" rx="8" ry="6" fill="#3b4543"/>
+    <path d="M37 34h55l-6-15H47z" fill="#375e73"/><path d="M45 34h39v9H45z" fill="#f3c85d"/>
+    <rect x="84" y="86" width="24" height="18" rx="3" fill="#c98548"/><path d="M84 92h24" stroke="#fff4dc" stroke-width="3"/>
+  </g>
+  <!-- Kot astronauta -->
+  <g transform="translate(128 0)" filter="url(#shadow)">
+    <circle cx="64" cy="64" r="58" fill="#dce7ef"/><circle cx="64" cy="64" r="52" fill="#7c91a5" stroke="#f6fbff" stroke-width="7"/>
+    <path d="M35 49l7-27 18 19M93 49l-7-27-18 19" fill="#6f8192" stroke="#415563" stroke-width="4" stroke-linejoin="round"/>
+    <ellipse cx="64" cy="68" rx="34" ry="30" fill="#8796a7"/><circle cx="51" cy="61" r="5" fill="#dff8ff"/><circle cx="78" cy="61" r="5" fill="#dff8ff"/><path d="M58 75l7 5 7-5" fill="none" stroke="#2d4146" stroke-width="4" stroke-linecap="round"/>
+    <path d="M22 58a43 43 0 0 0 84 0" fill="none" stroke="#eef8ff" stroke-width="7" opacity=".9"/><circle cx="97" cy="29" r="8" fill="#f0c75e"/><path d="M94 29h6M97 26v6" stroke="#fff" stroke-width="2"/>
+  </g>
+  <!-- Królik ogrodnik -->
+  <g transform="translate(256 0)" filter="url(#shadow)">
+    <circle cx="64" cy="64" r="58" fill="#e5f0d8"/>
+    <ellipse cx="44" cy="28" rx="13" ry="31" fill="#e7d7c6" stroke="#8e8378" stroke-width="4"/><ellipse cx="84" cy="28" rx="13" ry="31" fill="#e7d7c6" stroke="#8e8378" stroke-width="4"/>
+    <ellipse cx="64" cy="72" rx="36" ry="37" fill="#e7d7c6"/><circle cx="51" cy="64" r="5" fill="#40504d"/><circle cx="78" cy="64" r="5" fill="#40504d"/><path d="M59 78l6 4 6-4" fill="#bc7a76"/><path d="M34 45h61l-8-16H43z" fill="#6c9259"/><path d="M48 31c10-15 25-16 34 0" fill="#87aa69"/>
+    <path d="M99 88l12 13" stroke="#5d823f" stroke-width="5"/><path d="M104 85c7-7 13-4 13 2-6 3-10 3-13-2z" fill="#6ea954"/><path d="M101 90c-8-5-13-1-11 5 6 2 9 0 11-5z" fill="#75b35c"/>
+  </g>
+  <!-- Pies ratownik -->
+  <g transform="translate(384 0)" filter="url(#shadow)">
+    <circle cx="64" cy="64" r="58" fill="#ffe1cd"/><ellipse cx="35" cy="58" rx="18" ry="30" fill="#7a4d35" transform="rotate(15 35 58)"/><ellipse cx="93" cy="58" rx="18" ry="30" fill="#7a4d35" transform="rotate(-15 93 58)"/>
+    <ellipse cx="64" cy="70" rx="35" ry="34" fill="#b67b4c"/><circle cx="51" cy="59" r="5" fill="#263c3e"/><circle cx="78" cy="59" r="5" fill="#263c3e"/><ellipse cx="65" cy="75" rx="8" ry="6" fill="#3b4140"/>
+    <path d="M36 35h56l-8-18H45z" fill="#d65a4f"/><circle cx="65" cy="26" r="9" fill="#fff"/><path d="M65 20v12M59 26h12" stroke="#d65a4f" stroke-width="4"/>
+    <path d="M34 94h60l-6 20H40z" fill="#ef675a"/><path d="M64 96v14M57 103h14" stroke="#fff" stroke-width="4"/>
+  </g>
+  <!-- Kot mechanik -->
+  <g transform="translate(512 0)" filter="url(#shadow)">
+    <circle cx="64" cy="64" r="58" fill="#d9e2df"/><path d="M34 49l8-27 18 19M94 49l-8-27-18 19" fill="#6d827d" stroke="#4c5f5b" stroke-width="4" stroke-linejoin="round"/>
+    <ellipse cx="64" cy="70" rx="35" ry="34" fill="#758b86"/><circle cx="51" cy="62" r="5" fill="#e8f4ee"/><circle cx="78" cy="62" r="5" fill="#e8f4ee"/><path d="M58 76l7 5 7-5" fill="none" stroke="#273f3e" stroke-width="4" stroke-linecap="round"/>
+    <path d="M37 48h54" stroke="#d7a640" stroke-width="7"/><circle cx="49" cy="48" r="13" fill="#bfd7db" stroke="#425c62" stroke-width="4"/><circle cx="79" cy="48" r="13" fill="#bfd7db" stroke="#425c62" stroke-width="4"/>
+    <path d="M98 92l13 13M106 91l6-6 6 6-6 6" fill="none" stroke="#d7a640" stroke-width="5" stroke-linejoin="round"/>
+  </g>
+  <!-- Królik kurier -->
+  <g transform="translate(640 0)" filter="url(#shadow)">
+    <circle cx="64" cy="64" r="58" fill="#f4e0cf"/><ellipse cx="43" cy="28" rx="13" ry="31" fill="#cfae8f" stroke="#816c5d" stroke-width="4"/><ellipse cx="84" cy="28" rx="13" ry="31" fill="#cfae8f" stroke="#816c5d" stroke-width="4"/>
+    <ellipse cx="64" cy="72" rx="36" ry="37" fill="#cfae8f"/><circle cx="51" cy="64" r="5" fill="#334544"/><circle cx="78" cy="64" r="5" fill="#334544"/><path d="M59 78l6 4 6-4" fill="#a56f6c"/>
+    <path d="M33 45h63l-10-15H43z" fill="#3d8190"/><path d="M43 35h43" stroke="#f1c75d" stroke-width="5"/>
+    <path d="M32 91h20l7 25H38z" fill="#b97743"/><path d="M39 96h10" stroke="#fff1d0" stroke-width="3"/><path d="M99 84l-9 15h9l-5 14 18-20h-10l7-9z" fill="#f1c75d"/>
+  </g>
+</svg>
