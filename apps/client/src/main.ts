@@ -55,6 +55,7 @@ async function bootstrap(): Promise<void> {
 
   const game = new Phaser.Game(config);
   (window as any).__animalCareGame = game;
+  (window as any).__animalCareSession = launch.session;
   (window as any).__animalCareLaunch = {
     mode: launch.mode,
     hero: launch.hero,
