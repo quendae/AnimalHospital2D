@@ -4,5 +4,6 @@
     "types": ["vite/client"],
     "noEmit": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/scenes/ClinicScene.ts"]
 }

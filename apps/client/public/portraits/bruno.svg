@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Bruno — pomoc zabiegowa</title>
+  <desc id="desc">Stylizowany portret Bruna w koralowym uniformie z motywem plastra.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff0ed"/><stop offset="1" stop-color="#e8bdb7"/></linearGradient>
+    <linearGradient id="shirt" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#cf7771"/><stop offset="1" stop-color="#a8504d"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="64" fill="url(#bg)"/>
+  <path d="M74 470c20-110 84-164 182-164 99 0 163 54 182 164" fill="url(#shirt)"/>
+  <path d="M171 183c0-79 39-126 91-126 66 0 106 48 106 126v44c0 73-45 124-105 124-59 0-102-50-102-124z" fill="#b97c5f"/>
+  <path d="M160 195c-8-105 47-156 113-156 67 0 108 45 101 135-28-37-67-54-116-49-43 4-70 27-98 70z" fill="#4a332c"/>
+  <path d="M168 133c32-48 72-69 120-62 31 5 56 18 76 40-34-9-70-8-108 4-31 9-60 16-88 18z" fill="#4a332c"/>
+  <ellipse cx="220" cy="219" rx="8" ry="6" fill="#292526"/>
+  <ellipse cx="309" cy="219" rx="8" ry="6" fill="#292526"/>
+  <path d="M237 274c15 12 37 12 52 0" fill="none" stroke="#814a42" stroke-width="7" stroke-linecap="round"/>
+  <path d="M193 197c14-8 31-9 45-1M289 196c15-8 32-7 46 1" fill="none" stroke="#4a332c" stroke-width="8" stroke-linecap="round"/>
+  <path d="M205 352c17 22 34 33 51 33s35-11 52-33" fill="none" stroke="#f7dfdc" stroke-width="10" stroke-linecap="round"/>
+  <g transform="translate(372 382) rotate(-12)">
+    <rect x="-47" y="-18" width="94" height="36" rx="18" fill="#f7d7aa" stroke="#814a42" stroke-width="6"/>
+    <rect x="-14" y="-14" width="28" height="28" rx="8" fill="#fff1dc"/>
+    <circle cx="-29" cy="0" r="3" fill="#a86d54"/><circle cx="29" cy="0" r="3" fill="#a86d54"/>
+  </g>
+  <path d="M92 102l19 18m0-18-19 18" stroke="#fff" stroke-width="10" stroke-linecap="round" opacity=".6"/>
+</svg>
