@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import "./styles.css";
 import { mountLobby } from "./multiplayer/LobbyController";
 import type { P2PSession } from "./multiplayer/P2PSession";
+import { CardGalleryScene } from "./scenes/CardGalleryScene";
 import { ClinicSceneV2 } from "./scenes/ClinicSceneV2";
 import { installClinicSceneV2Guards } from "./scenes/ClinicSceneV2Guard";
 import { installClinicSceneV2IterationB } from "./scenes/ClinicSceneV2IterationB";
@@ -18,6 +19,9 @@ installClinicSceneV2IterationE();
 type RuntimeWindow = Window & typeof globalThis & {
   __ANIMAL_CARE_NETWORK__?: P2PSession;
 };
+
+const params = new URLSearchParams(window.location.search);
+const cardGalleryMode = params.get("cards") === "1";
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -45,7 +49,7 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [ClinicSceneV2],
+  scene: [cardGalleryMode ? CardGalleryScene : ClinicSceneV2],
 };
 
 let game: Phaser.Game | undefined;
@@ -88,8 +92,9 @@ function launchGame(session: P2PSession | undefined, seed: number): void {
   game = new Phaser.Game(config);
 }
 
-const params = new URLSearchParams(window.location.search);
-if (params.get("autostart") === "1") {
+if (cardGalleryMode) {
+  game = new Phaser.Game(config);
+} else if (params.get("autostart") === "1") {
   const seed = Number(params.get("seed"));
   launchGame(undefined, Number.isFinite(seed) && seed > 0 ? seed : 12345);
 } else {
